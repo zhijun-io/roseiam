@@ -1,11 +1,8 @@
 package io.roseiam.user;
 
 import io.roseiam.config.ApiException;
-import io.roseiam.platformsetting.MailDeliveryService;
 import io.roseiam.shared.UserPrincipal;
 import jakarta.validation.Valid;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,31 +17,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api")
 public class UserController {
-    private static final Logger logger = LoggerFactory.getLogger(UserController.class);
     private final UserService users;
     private final UserSettingService settings;
-    private final MailDeliveryService mail;
 
-    public UserController(UserService users, UserSettingService settings, MailDeliveryService mail) {
+    public UserController(UserService users, UserSettingService settings) {
         this.users = users;
         this.settings = settings;
-        this.mail = mail;
     }
 
     @PostMapping("/user-invitations")
     public ResponseEntity<UserDtos.UserCreateResponse> invite(
             @Valid @RequestBody UserDtos.UserCreateRequest request, Authentication auth) {
-        var created = users.invite(request, principal(auth));
-        try {
-            mail.sendInvitation(created.delivery().email(), created.delivery().token());
-        } catch (RuntimeException ex) {
-            logger.error("Could not send user invitation email");
-            throw new io.roseiam.config.ApiException(
-                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
-                    "mail_delivery_failed",
-                    "Invitation email could not be sent");
-        }
-        return ResponseEntity.status(201).body(created.response());
+        return ResponseEntity.status(201)
+                .body(users.invite(request, principal(auth)).response());
     }
 
     @PostMapping("/user-invitations/acceptance")

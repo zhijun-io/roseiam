@@ -2,11 +2,12 @@ package io.roseiam.role;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.roseiam.audit.AuditService;
+import io.roseiam.audit.Audited;
 import io.roseiam.config.ApiException;
 import io.roseiam.shared.UserPrincipal;
-import io.roseiam.user.UserEntity;
-import io.roseiam.user.UserMapper;
+import io.roseiam.user.UserDirectoryService;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +22,7 @@ public class RoleService {
     private final PermissionMapper permissions;
     private final RolePermissionMapper rolePermissions;
     private final UserRoleMapper userRoles;
-    private final UserMapper users;
+    private final UserDirectoryService users;
     private final AuditService audit;
     private final Clock clock;
 
@@ -30,7 +31,7 @@ public class RoleService {
             PermissionMapper permissions,
             RolePermissionMapper rolePermissions,
             UserRoleMapper userRoles,
-            UserMapper users,
+            UserDirectoryService users,
             AuditService audit,
             Clock clock) {
         this.roles = roles;
@@ -68,6 +69,7 @@ public class RoleService {
 
     @PreAuthorize("hasAuthority('roles:write')")
     @Transactional
+    @Audited(action = "role.created", targetType = "Role", targetIdFromResult = true, actorParameter = 3)
     public Map<String, Object> create(String name, String description, Set<Long> permissionIds, UserPrincipal actor) {
         String code = "Custom_" + name.trim().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", "_");
         if (roles.selectCount(new LambdaQueryWrapper<RoleEntity>()
@@ -84,12 +86,17 @@ public class RoleService {
         role.setUpdatedAt(clock.instant());
         roles.insert(role);
         replacePermissions(role.getId(), permissionIds);
-        audit.record(actor.userId(), "role.created", "Role", role.getId().toString(), "SUCCESS", null);
         return details(role.getId());
     }
 
     @PreAuthorize("hasAuthority('roles:write')")
     @Transactional
+    @Audited(
+            action = "role.updated",
+            targetType = "Role",
+            targetIdParameter = 0,
+            changedFieldsParameter = 1,
+            actorParameter = 2)
     public Map<String, Object> update(long id, Map<String, Object> patch, UserPrincipal actor) {
         RoleEntity role = roles.selectById(id);
         if (role == null) throw ApiException.notFound("Role not found");
@@ -109,18 +116,12 @@ public class RoleService {
         role.setUpdatedAt(clock.instant());
         roles.updateById(role);
         if (patch.containsKey("permissionIds")) replacePermissions(id, ids(patch.get("permissionIds")));
-        audit.record(
-                actor.userId(),
-                "role.updated",
-                "Role",
-                Long.toString(id),
-                "SUCCESS",
-                Map.of("changedFields", List.copyOf(patch.keySet())));
         return details(id);
     }
 
     @PreAuthorize("hasAuthority('roles:write')")
     @Transactional
+    @Audited(action = "role.deleted", targetType = "Role", targetIdParameter = 0, actorParameter = 1)
     public void delete(long id, UserPrincipal actor) {
         RoleEntity role = roles.selectById(id);
         if (role == null) throw ApiException.notFound("Role not found");
@@ -129,13 +130,12 @@ public class RoleService {
             throw ApiException.conflict("Role is assigned to users");
         rolePermissions.delete(new LambdaQueryWrapper<RolePermissionEntity>().eq(RolePermissionEntity::getRoleId, id));
         roles.deleteById(id);
-        audit.record(actor.userId(), "role.deleted", "Role", Long.toString(id), "SUCCESS", null);
     }
 
     @PreAuthorize("hasAuthority('user-roles:write')")
     @Transactional
     public void assign(long user, long role, UserPrincipal actor, boolean add) {
-        if (users.selectById(user) == null) throw ApiException.notFound("User not found");
+        if (!users.exists(user)) throw ApiException.notFound("User not found");
         RoleEntity roleEntity = roles.selectById(role);
         if (roleEntity == null) throw ApiException.notFound("Role not found");
         LambdaQueryWrapper<UserRoleEntity> relation = new LambdaQueryWrapper<UserRoleEntity>()
@@ -161,6 +161,87 @@ public class RoleService {
                 Long.toString(user),
                 "SUCCESS",
                 null);
+    }
+
+    public void assignOnInvitation(long userId, Set<Long> requestedRoleIds, Long actorId) {
+        Set<Long> existingRoleIds = roles.selectExistingByIds(requestedRoleIds).stream()
+                .map(RoleEntity::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!existingRoleIds.containsAll(requestedRoleIds)) throw ApiException.badRequest("Unknown role");
+        Set<Long> assignedRoleIds = userRoles.selectByUserId(userId).stream()
+                .map(link -> link.roleId)
+                .collect(java.util.stream.Collectors.toSet());
+        Instant assignedAt = clock.instant();
+        for (Long roleId : requestedRoleIds) {
+            if (assignedRoleIds.contains(roleId)) continue;
+            UserRoleEntity link = new UserRoleEntity();
+            link.userId = userId;
+            link.roleId = roleId;
+            link.assignedBy = actorId;
+            link.assignedAt = assignedAt;
+            userRoles.insert(link);
+        }
+    }
+
+    public List<String> roleCodesForUser(long userId) {
+        return roleCodesForUsers(List.of(userId)).getOrDefault(userId, List.of());
+    }
+
+    public Map<Long, List<String>> roleCodesForUsers(java.util.Collection<Long> userIds) {
+        if (userIds.isEmpty()) return Map.of();
+        List<UserRoleEntity> assignments = userRoles.selectByUserIds(userIds);
+        Set<Long> roleIds = assignments.stream().map(link -> link.roleId).collect(java.util.stream.Collectors.toSet());
+        Map<Long, String> codeByRoleId = roles.selectExistingByIds(roleIds).stream()
+                .collect(java.util.stream.Collectors.toMap(RoleEntity::getId, RoleEntity::getCode));
+        Map<Long, List<String>> result = new java.util.HashMap<>();
+        for (UserRoleEntity assignment : assignments) {
+            String code = codeByRoleId.get(assignment.roleId);
+            if (code != null)
+                result.computeIfAbsent(assignment.userId, ignored -> new java.util.ArrayList<>())
+                        .add(code);
+        }
+        result.replaceAll((id, codes) -> codes.stream().sorted().toList());
+        return result;
+    }
+
+    public void ensureNotLastPlatformAdmin(long userId) {
+        RoleEntity admin =
+                roles.selectOne(new LambdaQueryWrapper<RoleEntity>().eq(RoleEntity::getCode, "PlatformAdmin"));
+        if (admin == null) throw new IllegalStateException("PlatformAdmin role is not seeded");
+        boolean assigned = userRoles.selectCount(new LambdaQueryWrapper<UserRoleEntity>()
+                        .eq(UserRoleEntity::getUserId, userId)
+                        .eq(UserRoleEntity::getRoleId, admin.getId()))
+                > 0;
+        if (assigned) protectAdmin(userId, admin);
+    }
+
+    public boolean activePlatformAdminExistsForBootstrap() {
+        RoleEntity admin = roles.selectOne(new LambdaQueryWrapper<RoleEntity>()
+                .eq(RoleEntity::getCode, "PlatformAdmin")
+                .last("FOR UPDATE"));
+        if (admin == null) throw new IllegalStateException("PlatformAdmin role is not seeded");
+        return activeAdminCount(admin.getId()) > 0;
+    }
+
+    public boolean hasPlatformAdminRole(long userId) {
+        RoleEntity admin =
+                roles.selectOne(new LambdaQueryWrapper<RoleEntity>().eq(RoleEntity::getCode, "PlatformAdmin"));
+        return admin != null
+                && userRoles.selectCount(new LambdaQueryWrapper<UserRoleEntity>()
+                                .eq(UserRoleEntity::getUserId, userId)
+                                .eq(UserRoleEntity::getRoleId, admin.getId()))
+                        > 0;
+    }
+
+    public void assignBootstrapPlatformAdmin(long userId) {
+        RoleEntity admin =
+                roles.selectOne(new LambdaQueryWrapper<RoleEntity>().eq(RoleEntity::getCode, "PlatformAdmin"));
+        if (admin == null) throw new IllegalStateException("PlatformAdmin role is not seeded");
+        UserRoleEntity link = new UserRoleEntity();
+        link.userId = userId;
+        link.roleId = admin.getId();
+        link.assignedAt = clock.instant();
+        userRoles.insert(link);
     }
 
     private void replacePermissions(long role, Set<Long> ids) {
@@ -219,12 +300,18 @@ public class RoleService {
                 .stream()
                 .map(link -> link.userId)
                 .toList();
-        long active = admins.isEmpty()
-                ? 0
-                : users.selectCount(new LambdaQueryWrapper<UserEntity>()
-                        .in(UserEntity::getId, admins)
-                        .eq(UserEntity::getStatus, "ACTIVE"));
+        long active = users.countActive(admins);
         if (active <= 1) throw ApiException.conflict("The last active PlatformAdmin cannot be removed");
+    }
+
+    private long activeAdminCount(long roleId) {
+        List<Long> adminUserIds =
+                userRoles
+                        .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getRoleId, roleId))
+                        .stream()
+                        .map(link -> link.userId)
+                        .toList();
+        return users.countActive(adminUserIds);
     }
 
     private static Set<Long> ids(Object value) {

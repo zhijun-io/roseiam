@@ -141,7 +141,7 @@
 
 ### 数据要求
 
-- 产品需要维护 User、UserInvitation、PasswordRecovery、UserSession、Role、Permission、UserRole、RolePermission、UserSetting、PlatformSetting 和 AuditEvent。
+- 产品需要维护 User、UserInvitation、PasswordReset、UserSession、Role、Permission、UserRole、RolePermission、UserSetting、PlatformSetting 和 AuditEvent。
 - `PlatformSetting` 和 `UserSetting` 以 `type` 与 JSON `value` 组织配置；当前 API 对外仍使用具名设置 DTO。
 - 审计记录保留 365 天后自动清理；令牌只以摘要形式保存，不记录至日志或审计载荷。
 
@@ -187,5 +187,5 @@
 
 | 版本 | 日期 | 变更 | 审批 |
 | --- | --- | --- | --- |
-| 1.0 | 2026-10-20 | 批准员工 IAM 首批范围：登录与恢复、账号生命周期、RBAC、个人中心、基础系统设置、审计；客户场景暂缓 | 用户于 2026-10-20 批准；后由 PRD 1.1 修订 |
+| 1.0 | 2026-10-20 | 批准员工 IAM 首批范围：登录与密码重置、账号生命周期、RBAC、个人中心、基础系统设置、审计；客户场景暂缓 | 用户于 2026-10-20 批准；后由 PRD 1.1 修订 |
 | 1.1 | 2026-10-20 | 修订为单企业、邮箱验证/邮件邀请与密码重置、后端 API only；补充 UserSetting、SMTP/前端 URL 平台设置、type + JSON value 设置存储和会话/RBAC/审计默认值；移除支持联系邮箱并明确审计事件边界 | 用户于 2026-10-20 批准 B1 范围与默认方案 |

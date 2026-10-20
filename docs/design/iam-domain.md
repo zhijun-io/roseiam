@@ -1,7 +1,7 @@
 # IAM 领域设计
 
 - **状态：** Accepted domain contract（对应 PRD 1.1 Approved；设计关卡 Ready）
-- **版本：** 0.6
+- **版本：** 0.8
 - **日期：** 2026-10-20
 - **适用范围：** PRD 1.1 Approved B1：员工身份、登录恢复、RBAC、个人资料与用户设置、平台设置、审计。
 - **来源：** [IAM 管理平台 PRD](../prd/iam-management-platform.md) 与 `spring-boot-developer` 技能工作流。
@@ -14,7 +14,7 @@
 | --- | --- | --- | --- |
 | User（用户） | 表示可认证并被授权的员工 | 稳定用户 ID、规范化唯一邮箱、邮箱验证状态、密码摘要、必填 `name`、状态 | ID 不随邮箱变化；`Invited → Active → Disabled`。首版只停用账号，不提供硬删除。 |
 | UserInvitation（用户邀请） | 邀请已有 `Invited` 状态的 User 完成邮箱验证和激活 | ID、User ID、令牌摘要、到期时间、使用/撤销状态 | 一次性；默认 72 小时有效；重发时撤销旧邀请。目标邮箱取自关联 User。 |
-| PasswordRecovery（密码重置） | 限时证明用户账号重置密码请求 | 用户 ID、令牌摘要、到期时间、使用状态 | 一次性；默认 30 分钟有效；成功后撤销该用户所有活动会话。 |
+| PasswordReset（密码重置） | 限时证明用户账号重置密码请求 | 用户 ID、令牌摘要、到期时间、使用状态 | 一次性；默认 30 分钟有效；成功后撤销该用户所有活动会话。 |
 | Role（角色） | 命名的一组权限 | ID、名称、描述、是否内置 | 可分配给多个 User；管理员可维护自定义角色和权限关联，内置角色不可删除。 |
 | Permission（权限） | 对受保护资源执行操作的授权原子 | 稳定权限标识、资源、操作 | 可授予多个 Role；首版权限目录由产品定义。 |
 | UserRole（用户角色关联） | 表达 User 与 Role 的多对多关系并记录授予信息 | 用户 ID、角色 ID、授予者、授予时间 | 每条关联恰好引用一个 User 和一个 Role；同一对至多一条有效关联。 |
@@ -36,14 +36,14 @@ flowchart LR
   USER -->|零至多个| USER_SESSION[UserSession]
   USER -->|被引用于| AUDIT[AuditEvent]
   INVITE[UserInvitation] -->|激活| USER
-  RECOVERY[PasswordRecovery] -->|恢复凭据| USER
+  RESET[PasswordReset] -->|重置凭据| USER
 ```
 
 因此 `User` 与 `Role` 是多对多，`Role` 与 `Permission` 也是多对多；`UserRole` 和 `RolePermission` 分别承载两组关联及其约束。
 
-## 字段清单（建议基线）
+## 字段清单（当前实现）
 
-以下字段是首版领域/API 设计建议，不等同于最终 SQL schema。ID 默认使用 `Long`（如某项需求需要不透明外部标识，可另行选 `String`），不使用 UUID；关系由 ID 字段表达，建表语句不添加外键约束，并由应用层校验引用存在性和生命周期规则。时间使用 UTC `Instant`；邮箱按去除首尾空白并转为小写的规范化值保持唯一。所有密码、邮件令牌和会话令牌仅保存安全摘要，不保存明文。
+以下字段按当前 Java 实体和 Flyway schema 整理；它们描述实现，不替代 PRD 的产品需求。逻辑模型名 `PasswordReset` 当前映射到 `password_resets`；V1 历史迁移使用 `password_recoveries`，V3 已重命名表。ID 使用 `Long`，不使用 UUID；关系由 ID 字段表达，建表语句不添加外键约束，并由应用层校验引用存在性和生命周期规则。时间使用 UTC `Instant`；邮箱按去除首尾空白并转为小写的规范化值保持唯一。所有密码、邮件令牌和会话令牌仅保存安全摘要，不保存明文。
 
 | 模型 | 字段 | 类型 / 约束 | 说明 |
 | --- | --- | --- | --- |
@@ -58,9 +58,9 @@ flowchart LR
 |  | `tokenHash` | 字符串，非空、唯一 | 邮件一次性令牌的安全摘要 |
 |  | `expiresAt`, `usedAt`, `revokedAt` | Instant；后两者可空 | 72 小时有效；使用或撤销后失效 |
 |  | `createdBy`, `createdAt` | Long，可空；Instant | 邀请发起者；初始管理员邀请没有操作者 |
-| `PasswordRecovery` | `id`, `userId` | Long；`userId` 关联 User | 重置请求和所属用户；由应用验证关联有效 |
+| `PasswordReset` | `id`, `userId` | Long；`userId` 关联 User | 重置请求和所属用户；由应用验证关联有效 |
 |  | `tokenHash` | 字符串，非空、唯一 | 不保存邮件中的明文令牌 |
-|  | `expiresAt`, `usedAt`, `createdAt` | Instant；`usedAt` 可空 | 30 分钟有效且只能使用一次 |
+|  | `expiresAt`, `usedAt`, `revokedAt`, `createdAt` | Instant；`usedAt`、`revokedAt` 可空 | 30 分钟有效；使用、撤销或重置另一令牌后失效 |
 | `Role` | `id` | Long，主键 | 角色标识 |
 |  | `code` | 字符串，非空、唯一 | 稳定标识；内置角色 code 固定 |
 |  | `name` | 字符串，非空、最大 100 字符 | 显示名称；规范化后唯一 |
@@ -77,17 +77,17 @@ flowchart LR
 |  | `tokenHash` | 字符串，非空、唯一 | 256-bit 随机 bearer token 的摘要 |
 |  | `createdAt`, `lastActivityAt` | Instant，非空 | 创建和最近活动时间 |
 |  | `idleExpiresAt`, `absoluteExpiresAt` | Instant，非空 | 当前空闲期限和固定绝对期限 |
-|  | `revokedAt`, `revokeReason` | Instant、字符串，可空 | 撤销时间与原因 |
+|  | `revokedAt` | Instant，可空 | 会话撤销时间 |
 | `AuditEvent` | `id`, `occurredAt` | Long；Instant，非空 | 事件标识和发生时间 |
 |  | `actorUserId` | Long，可空 | 操作者；匿名认证失败时为空 |
 |  | `action`, `targetType`, `targetId` | 字符串；`targetId` 可空 | 发生的操作及目标 |
-|  | `outcome` | `Success` / `Failure` | 操作结果 |
+|  | `result` | `SUCCESS` / `FAILURE` | 操作结果 |
 |  | `requestId` | 字符串，非空 | 关联同一请求的日志与审计事件 |
 |  | `safeMetadata` | JSON，可空 | 仅白名单非秘密信息；禁止密码、令牌、SMTP 凭据 |
 | `PlatformSetting` | `id` | Long，主键 | 单条配置记录标识 |
 |  | `type` | 字符串，非空、唯一；首批 `general`、`mail` | 指定 `value` JSON 的结构和字段白名单 |
 |  | `value` | JSON 对象，非空 | `general` 含 `platformName`、`defaultLocale`、`frontendBaseUrl`；`mail` 含 `smtpHost`、`smtpPort`、`smtpUsername`、`smtpFromAddress`、`smtpAuthEnabled`、`smtpStartTlsEnabled`、`smtpPasswordEncrypted` |
-|  | `updatedBy`, `updatedAt` | Long；Instant | 最后修改者和时间 |
+|  | `updatedAt` | Instant，非空 | 最后修改时间；当前 schema 不保存修改者 |
 | `UserSetting` | `id` | Long，主键 | 设置记录标识 |
 |  | `userId` | Long，关联 ID | 设置所属 User；由应用验证 User 存在和当前操作者所有权 |
 |  | `type` | 字符串，非空；首批仅 `preferences` | 与 `userId` 组成唯一键，避免同一用户重复拥有同类设置 |
@@ -141,7 +141,7 @@ SMTP 配置由平台管理员通过平台设置接口维护。密码在 TLS 请�
 | `Active` | 管理员停用 | `Disabled` | 立即拒绝访问并撤销全部会话 |
 | `Disabled` | 管理员重新启用 | `Active` | 恢复访问；旧会话不恢复，用户需重新登录 |
 
-密码恢复是凭据转换，不改变账号状态；账号停用期间恢复操作不得重新激活账号。
+密码重置是凭据转换，不改变账号状态；账号停用期间重置操作不得重新激活账号。
 
 ## 权限边界
 
@@ -166,7 +166,7 @@ SMTP 配置由平台管理员通过平台设置接口维护。密码在 TLS 请�
 | 初始平台管理员 | 一次性初始化流程指定邮箱并验证；无共享默认密码 | 初次启动并安全建立管理访问 |
 | 审计查询 | 查询动作记录操作者、时间和结果；不保存敏感搜索值 | 审计访问本身可追踪，不对该追踪事件重复审计 |
 
-首位 `PlatformAdmin` 由一次性初始化命令创建为待验证邀请，向指定邮箱发送验证链接，用户验证邮箱并设置密码后激活。正常运行期间不得通过公开注册创建账户；初始化命令只能在系统尚无平台管理员时运行，重复执行不得覆盖已有用户或凭据。首次启动时以部署初始化配置种入 SMTP 和前端基础 URL：本地使用 `http://localhost:3000`、Mailpit `mailpit:1025`、`no-reply@roseiam.local`、无认证/无 TLS；其他环境由运维通过 Secret/环境变量提供初始 SMTP 连接参数。首次管理员激活后，平台设置成为邮件配置的管理入口和运行时数据源，管理员可在其中修改设置。启用 SMTP 密码认证时必须配置邮件密码加密密钥。
+首位 `PlatformAdmin` 由 `BootstrapAdminRunner` 在应用启动时根据 `bootstrap-admin-email` 配置创建为待验证邀请，并发布事务提交后的异步邮件事件；邮箱留空时 runner 不执行。用户验证邮箱并设置密码后激活。正常运行期间不得通过公开注册创建账户；已有活动平台管理员时启动不会覆盖用户、角色、凭据或设置。如果该配置邮箱已有待激活的管理员邀请，后续启动会撤销旧邀请并重新创建、发送新邀请。SMTP 投递失败不会阻止启动；进程在异步事件处理前退出可能导致邮件丢失。首次启动时以部署初始化配置种入 SMTP 和前端基础 URL：本地使用 `http://localhost:3000`、Mailpit `mailpit:1025`、`no-reply@roseiam.local`、无认证/无 TLS；其他环境由运维通过 Secret/环境变量提供初始 SMTP 连接参数。首次管理员激活后，平台设置成为邮件配置的管理入口和运行时数据源，管理员可在其中修改设置。启用 SMTP 密码认证时必须配置邮件密码加密密钥。
 
 ## 修订历史
 
@@ -177,41 +177,42 @@ SMTP 配置由平台管理员通过平台设置接口维护。密码在 TLS 请�
 | 0.4 | 2026-10-20 | PlatformSetting 和 UserSetting 改为 type + JSON value 字段模型 | PRD 1.1 待审批 |
 | 0.5 | 2026-10-20 | 移除支持联系邮箱；明确邀请时创建 Invited User，并补齐审计范围与失败行为 | PRD 1.1 待审批 |
 | 0.6 | 2026-10-20 | 用户批准 PRD 1.1 默认决策；确认领域契约并完成 B1 设计就绪评估 | Ready |
+| 0.7 | 2026-10-20 | 对齐已实现的技术栈、包结构、密码重置术语和同步邮件行为；记录跨模块依赖偏差 | Implementation-aligned |
+| 0.8 | 2026-10-20 | 对齐事务提交后的异步邮件、管理员启动邀请语义和当前实体字段 | Implementation-aligned |
 
 ## Spring Boot 技术方案
 
-本仓库目前没有构建配置或应用代码。以下技术栈和结构是新项目建议，不代表已经采用。`spring-boot-developer` 技能的版本清单于 2026-10-13 校准；Spring 官方文档当前列出 Spring Boot 4.1.1，并要求 Java 17+、兼容至 Java 26。初始化项目时应再次核对版本。[Spring Boot 系统要求](https://docs.spring.io/spring-boot/system-requirements.html) PostgreSQL 官方版本策略显示 18 为当前受支持主版本之一，建议部署时使用该主版本的最新小版本。[PostgreSQL 版本策略](https://www.postgresql.org/support/versioning/)
+本仓库已包含可运行的 Spring Boot 后端。以下版本表保留的是最初方案记录，不作为当前实际依赖版本；以根目录 `pom.xml`、Maven Wrapper 与运行文档为准。当前实现使用 Java/Spring Boot、PostgreSQL、Flyway、MyBatis-Plus 和 Spring Security。
 
 | 项目 | 建议 | 状态 / 原因 |
 | --- | --- | --- |
-| 应用框架 | Spring Boot 4.1.1、Spring Framework 7 | 新项目候选基线，待确认 |
-| 语言 | Java 25 | 技能默认工具链，待确认本机/CI 支持 |
+| 应用框架 | 见根目录 `pom.xml` | 当前实现 |
+| 语言 | 见根目录 `pom.xml` | 当前实现 |
 | 构建 | Maven Wrapper | 技能默认工作流，固定构建工具版本 |
 | Web | Spring MVC | 适用于请求/响应型管理 API；无当前需求要求 WebFlux |
-| 持久化 | PostgreSQL 18 | 候选关系数据库；生产托管方式由部署环境确定 |
+| 持久化 | PostgreSQL | 当前实现；具体版本见 Compose 配置 |
 | 架构形态 | 按业务能力组织的模块化单体 | 首批规模不需要微服务拆分 |
 | API | JSON REST，基路径 `/api` | 与 [API 契约](../api.md) 对齐 |
 | 认证 | 前后端分离 API 使用不透明 Bearer token，并在服务端维护 `UserSession` | 与即时撤销一致；不采用自包含 JWT |
-| Schema 迁移 | 使用显式迁移工具 | 工具待选；生产运行不依赖自动改表 |
+| Schema 迁移 | Flyway | 当前实现；生产运行不依赖 Hibernate 自动改表 |
 
 ### 模块边界
 
-建议根包放置启动类，按业务能力组织模块，避免全局按技术层拆包：
+当前根包为 `io.roseiam`，按业务能力组织模块：
 
 ```text
-<root-package>/
-  Application.java
+io.roseiam/
+  RoseiamApplication.java
   config/              # Spring Security、全局 Web 与错误处理
-  identity/            # 登录、恢复、邀请、用户生命周期、个人资料
-  userrole/            # UserRole 关联
-  rolepermission/      # RolePermission 关联
-  role/                # 角色与权限目录
-  platformsetting/     # 白名单平台设置
-  usersetting/         # 语言、时区、主题等用户偏好
-  audit/               # 只追加审计写入与查询
+  identity/            # 登录、登出、UserSession、密码重置
+  user/                 # User、UserInvitation、个人资料与 UserSetting
+  role/                 # Role、Permission、UserRole、RolePermission
+  platformsetting/      # 平台设置与 SMTP 邮件发送
+  audit/                # 审计写入、AOP 与查询
+  shared/               # 共享基础类型
 ```
 
-HTTP 控制器只负责请求绑定和响应映射；业务规则放在用例边界；使用专用 Request/Response DTO，不暴露持久化实体。跨模块通过明确接口交互，不直接访问彼此的实体或 Repository。
+HTTP 控制器使用专用 Request/Response DTO，不暴露持久化实体。跨功能操作通过 owning feature 的服务门面完成；identity、user、role 之间不直接注入其他功能模块的 Mapper 或 Entity。当前边界由服务接口约定，尚未通过 Modulith 或 ArchUnit 自动强制。
 
 ### 安全与事务建议
 
@@ -221,7 +222,7 @@ HTTP 控制器只负责请求绑定和响应映射；业务规则放在用例边
 - 账号停用和角色变更必须在后续请求生效。建议每个受保护请求检查账号有效性；授权缓存必须能及时失效。具体方式由实现阶段的性能验证决定。
 - 认证由全局安全配置负责；具体业务操作的 RBAC 判定放在对应模块的用例边界。
 - 邀请/验证/重置凭据只存储安全表示，不写入日志、审计事件或错误响应。SMTP 密码加密保存且不可读回；加密密钥从部署 Secret 注入。
-- 成功登录创建会话、关键管理状态变更及对应审计记录必须在同一数据库事务中提交；审计写入失败时回滚会话或业务状态变更。SMTP 发送是外部副作用，不纳入数据库事务；通知失败不得造成已提交状态与审计记录不一致，邮件重试策略在实现规格中定义。
+- 成功登录创建会话、关键管理状态变更及对应审计记录必须在同一数据库事务中提交；审计写入失败时回滚会话或业务状态变更。SMTP 发送是外部副作用，不纳入数据库事务。当前实现通过事务提交事件和异步监听器发送邀请/密码重置邮件；失败记录含请求 ID 和异常的运维日志，不自动重试。投递是 best-effort，进程在事件处理前崩溃可能丢失邮件，用户/管理员可重新请求或邀请。首位管理员也通过该事件路径投递，SMTP 故障不会阻止应用启动。
 - 生产 schema 使用版本化迁移；应用只依赖 SMTP 协议，不绑定邮件供应商；本地使用 Mailpit。
 
 ## 设计就绪评估
@@ -232,7 +233,7 @@ HTTP 控制器只负责请求绑定和响应映射；业务规则放在用例边
 | --- | --- | --- | --- |
 | PRD 需求 | 领域契约 | API 契约 | Canonical 契约 / 结论 |
 | --- | --- | --- | --- |
-| FR-1 登录与密码恢复 | Covered by accepted contract | Covered by accepted contract | [认证模型与生命周期](#核心模型)、[账号规则](#账号和凭据)、[认证 API](../api.md#身份与会话)；包括邮箱验证、恢复令牌与 UserSession。 |
+| FR-1 登录与密码重置 | Covered by accepted contract | Covered by accepted contract | [认证模型与生命周期](#核心模型)、[账号规则](#账号和凭据)、[认证 API](../api.md#身份与会话)；包括邮箱验证、重置令牌与 UserSession。 |
 | FR-2 员工账号生命周期 | Covered by accepted contract | Covered by accepted contract | [User/UserInvitation 及状态转换](#状态转换)、[用户 API](../api.md#用户与个人资料)。 |
 | FR-3 角色与权限配置 | Covered by accepted contract | Covered by accepted contract | [UserRole/RolePermission 多对多](#关系)、[权限边界](#权限边界)、[RBAC API](../api.md#角色与权限)。 |
 | FR-4 按 RBAC 授权 | Covered by accepted contract | Covered by accepted contract | [RBAC 规则](#rbac)及 API 通用授权约定；权限并集、默认拒绝和无显式拒绝。 |

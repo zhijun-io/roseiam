@@ -6,14 +6,14 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
-public class AuthorizationQuery {
+public class RolePermissionService {
 
     private final UserRoleMapper userRoles;
     private final RolePermissionMapper rolePermissions;
     private final PermissionMapper permissions;
     private final RoleMapper roles;
 
-    public AuthorizationQuery(
+    public RolePermissionService(
             UserRoleMapper userRoles,
             RolePermissionMapper rolePermissions,
             PermissionMapper permissions,

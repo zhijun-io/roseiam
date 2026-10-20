@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/platform-settings")
 public class PlatformSettingController {
-    private final PlatformSettingsService settings;
+    private final PlatformSettingService settings;
 
-    public PlatformSettingController(PlatformSettingsService settings) {
+    public PlatformSettingController(PlatformSettingService settings) {
         this.settings = settings;
     }
 

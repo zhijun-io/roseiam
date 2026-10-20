@@ -1,4 +1,4 @@
-# 认证、密码恢复与会话实施计划
+# 认证、密码重置与会话实施计划
 
 **状态：** Approved<br>
 **审批记录：** 用户于 2026-10-20 批准本计划<br>
@@ -33,25 +33,25 @@
 
 - **依赖：** Slice 1。
 
-- **测试或证明：** 为无 token、撤销/过期 token、停用账户、当前权限更新、空闲与绝对超时及重复登出编写 Web/集成测试；接入 Bearer 认证过滤器和当前 UserSession 校验。
+- **测试或证明：** 为无 token、撤销/过期 token、停用账户、当前权限更新、空闲与绝对超时及重复登出编写 Web/集成测试；当前实现使用 Spring Security `AuthenticationFilter` 处理登录、opaque-token resource-server 机制校验 UserSession、Spring Security LogoutFilter 处理登出。
 
-- **实现概要：** 实现 15 分钟空闲和 8 小时绝对期限、每请求活动更新时间、即时撤销、401/403 映射及 POST /api/auth/logout 幂等语义。
+- **实现概要：** 实现 15 分钟空闲和 8 小时绝对期限、每请求活动更新时间、即时撤销、ProblemDetail 401/403 映射及 POST `/api/auth/logout` 幂等语义。
 
 - **验证命令：** `./mvnw test`。
 
 - **完成：** true
 
-## Slice 3：安全请求并完成密码恢复
+## Slice 3：安全请求并完成密码重置
 
-- **目标：** 安全请求并完成密码恢复。
+- **目标：** 安全请求并完成密码重置。
 
 - **Acceptance：** AC-9–AC-12。
 
 - **依赖：** Slice 1；平台邮件配置由 IAM-SETTING-01 Slice 1 提供运行时邮件配置读取。
 
-- **测试或证明：** 测试未知/未验证/有效邮箱统一 202、邮件发送、令牌一次性/过期/并发使用、重置后撤销会话及停用用户保持停用；实现恢复令牌摘要、30 分钟有效期和密码更新事务。
+- **测试或证明：** 测试未知/未验证/有效邮箱统一 202、邮件发送、令牌一次性/过期/并发使用、重置后撤销会话及停用用户保持停用；实现密码重置令牌摘要、30 分钟有效期和密码更新事务。
 
-- **实现概要：** 实现 password-recoveries API 与邮件端口适配，邮件链接由 frontendBaseUrl 生成；日志、审计、错误和存储不得泄漏令牌明文。
+- **实现概要：** 实现 `password-resets` API；登录通过 Spring Security `AuthenticationFilter`，会话通过 resource-server opaque-token introspector 校验，登出通过 Spring Security LogoutFilter。邮件链接由 `frontendBaseUrl` 生成；邀请和重置邮件通过事务提交事件异步 best-effort 投递，无持久化 outbox 或自动重试；日志、审计、错误和存储不得泄漏令牌明文。
 
 - **验证命令：** `./mvnw verify`。
 
@@ -76,7 +76,7 @@
 
 | 日期 | Slice | 验证命令和结果 | 偏差 |
 | --- | --- | --- | --- |
-| 2026-10-20 | Slice 1–3 | `IdentityAndJsonbIntegrationTest` 覆盖成功/错误密码、session 持久化与登出；`ApiAuthorizationIntegrationTest` 覆盖受保护 API；Mailpit 容器冒烟覆盖邀请接受/登录/登出链路；`mise exec -- ./mvnw verify` | 通过；密码恢复并发、会话过期边界与审计存储故障未逐项自动化覆盖 |
+| 2026-10-20 | Slice 1–3 | `IdentityAndJsonbIntegrationTest` 覆盖成功/错误密码、session 持久化与登出；`ApiAuthorizationIntegrationTest` 覆盖受保护 API；Mailpit 容器冒烟覆盖邀请接受/登录/登出链路；`mise exec -- ./mvnw verify` | 通过；密码重置并发、会话过期边界与审计存储故障未逐项自动化覆盖 |
 
 
 ### 修订历史

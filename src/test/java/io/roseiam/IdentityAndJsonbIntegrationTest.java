@@ -1,12 +1,12 @@
 package io.roseiam;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import io.roseiam.config.ApiException;
 import io.roseiam.identity.AuthDtos;
-import io.roseiam.identity.IdentityService;
 import io.roseiam.identity.TokenService;
 import io.roseiam.identity.UserSessionEntity;
 import io.roseiam.identity.UserSessionMapper;
@@ -27,19 +27,23 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
+@AutoConfigureMockMvc
 @Transactional
 class IdentityAndJsonbIntegrationTest {
 
     @Autowired
-    private IdentityService identity;
+    private MockMvc mvc;
 
     @Autowired
     private UserMapper users;
@@ -72,10 +76,10 @@ class IdentityAndJsonbIntegrationTest {
     private UserRoleMapper userRoles;
 
     @Test
-    void loginPersistsOpaqueSessionAndLogoutRevokesIt() {
+    void loginFilterPersistsOpaqueSessionAndLogoutFilterRevokesIt() throws Exception {
         UserEntity user = activeUser("login");
 
-        AuthDtos.LoginResponse response = identity.login(new AuthDtos.LoginRequest(user.getEmail(), "test-pass"));
+        AuthDtos.LoginResponse response = login(user.getEmail(), "test-pass");
 
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.accessToken()).isNotBlank();
@@ -85,17 +89,43 @@ class IdentityAndJsonbIntegrationTest {
         assertThat(session.getUserId()).isEqualTo(user.getId());
         assertThat(session.getTokenHash()).isNotEqualTo(response.accessToken());
 
-        identity.logout("Bearer " + response.accessToken());
+        mvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + response.accessToken()))
+                .andExpect(status().isNoContent());
         assertThat(sessions.selectById(session.getId()).getRevokedAt()).isNotNull();
-        identity.logout("Bearer " + response.accessToken());
+        mvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + response.accessToken()))
+                .andExpect(status().isNoContent());
     }
 
     @Test
-    void loginRejectsWrongPassword() {
+    void loginFilterRejectsWrongPassword() throws Exception {
         UserEntity user = activeUser("wrong-password");
 
-        assertThatThrownBy(() -> identity.login(new AuthDtos.LoginRequest(user.getEmail(), "wrong")))
-                .isInstanceOf(ApiException.class);
+        mvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(new AuthDtos.LoginRequest(user.getEmail(), "wrong"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    void loginFilterRejectsUnverifiedAccountBeforeSessionCreation() throws Exception {
+        UserEntity user = new UserEntity();
+        user.setEmail("unverified@example.test");
+        user.setPasswordHash(passwords.encode("test-pass"));
+        user.setStatus("ACTIVE");
+        user.setCreatedAt(Instant.now());
+        user.setUpdatedAt(Instant.now());
+        users.insert(user);
+
+        mvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                jsonMapper.writeValueAsString(new AuthDtos.LoginRequest(user.getEmail(), "test-pass"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        assertThat(sessions.selectCount(
+                        new LambdaQueryWrapper<UserSessionEntity>().eq(UserSessionEntity::getUserId, user.getId())))
+                .isZero();
     }
 
     @Test
@@ -157,5 +187,14 @@ class IdentityAndJsonbIntegrationTest {
         user.setUpdatedAt(createdAt);
         users.insert(user);
         return user;
+    }
+
+    private AuthDtos.LoginResponse login(String email, String password) throws Exception {
+        var result = mvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(jsonMapper.writeValueAsString(new AuthDtos.LoginRequest(email, password))))
+                .andExpect(status().isOk())
+                .andReturn();
+        return jsonMapper.readValue(result.getResponse().getContentAsByteArray(), AuthDtos.LoginResponse.class);
     }
 }

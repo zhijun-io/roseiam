@@ -11,9 +11,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class MailDeliveryService {
 
-    private final PlatformSettingsService settings;
+    private final PlatformSettingService settings;
 
-    public MailDeliveryService(PlatformSettingsService settings) {
+    public MailDeliveryService(PlatformSettingService settings) {
         this.settings = settings;
     }
 
@@ -27,7 +27,7 @@ public class MailDeliveryService {
                 "Use this one-time link within 72 hours to activate your account:\n" + link);
     }
 
-    public void sendPasswordRecovery(String recipient, String token) {
+    public void sendPasswordReset(String recipient, String token) {
         Map<String, Object> general = settings.generalForMail();
         String link = general.get("frontendBaseUrl") + "/reset-password?token="
                 + URLEncoder.encode(token, StandardCharsets.UTF_8);

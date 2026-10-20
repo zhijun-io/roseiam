@@ -28,7 +28,7 @@ Set `APP_BOOTSTRAP_ADMIN_EMAIL` and start the API to run the one-time bootstrap:
 APP_BOOTSTRAP_ADMIN_EMAIL=admin@example.com ./mvnw spring-boot:run
 ```
 
-The command creates an invitation and sends a verification link to Mailpit. The employee sets a password and name when accepting the invitation. No shared default password is created. Re-running initialization after a platform administrator exists reports that initialization is already complete and does not overwrite data.
+The command creates a pending administrator invitation and requests delivery of a verification link through the after-commit asynchronous mail listener. The employee sets a password and name when accepting the invitation. No shared default password is created. SMTP delivery is best-effort: an SMTP failure does not stop startup, and a process exit before the listener sends the message can lose it. Re-running initialization while an administrator invitation is still pending revokes that invitation and issues a new link; after a platform administrator is active, initialization leaves the account unchanged.
 
 For a containerized run, set `APP_BOOTSTRAP_ADMIN_EMAIL` in `.env` before running `docker compose -f compose.full.yaml up --build -d`.
 

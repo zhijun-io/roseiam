@@ -1,9 +1,8 @@
 package io.roseiam.user;
 
-import io.roseiam.platformsetting.MailDeliveryService;
+import io.roseiam.config.AppProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.Ordered;
@@ -16,13 +15,10 @@ public class BootstrapAdminRunner implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(BootstrapAdminRunner.class);
     private final String email;
     private final UserService users;
-    private final MailDeliveryService mail;
 
-    public BootstrapAdminRunner(
-            @Value("${app.bootstrap.admin-email:}") String email, UserService users, MailDeliveryService mail) {
-        this.email = email;
+    public BootstrapAdminRunner(AppProperties properties, UserService users) {
+        this.email = properties.getBootstrapAdminEmail();
         this.users = users;
-        this.mail = mail;
     }
 
     @Override
@@ -33,7 +29,6 @@ public class BootstrapAdminRunner implements ApplicationRunner {
             log.info("Bootstrap administrator already exists");
             return;
         }
-        mail.sendInvitation(invitation.delivery().email(), invitation.delivery().token());
-        log.info("Bootstrap administrator invitation sent to {}", email);
+        log.info("Bootstrap administrator invitation requested for {}", email);
     }
 }

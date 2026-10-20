@@ -1,6 +1,7 @@
 package io.roseiam.audit;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.roseiam.config.ApiException;
 import io.roseiam.shared.UserPrincipal;
 import java.time.Instant;
@@ -42,10 +43,10 @@ public class AuditQueryService {
         LambdaQueryWrapper<AuditEventEntity> filter = filter(actor, action, targetType, targetId, result, from, to);
         long total = mapper.selectCount(filter);
         LambdaQueryWrapper<AuditEventEntity> rows = filter(actor, action, targetType, targetId, result, from, to)
-                .orderByDesc(AuditEventEntity::getOccurredAt, AuditEventEntity::getId)
-                .last("LIMIT " + n + " OFFSET " + ((long) p * n));
-        List<Map<String, Object>> items =
-                mapper.selectList(rows).stream().map(this::toMap).toList();
+                .orderByDesc(AuditEventEntity::getOccurredAt, AuditEventEntity::getId);
+        List<Map<String, Object>> items = mapper.selectPage(new Page<>((long) p + 1, n), rows).getRecords().stream()
+                .map(this::toMap)
+                .toList();
         List<String> filtersUsed = filtersUsed(actor, action, targetType, targetId, result, from, to);
         audit.record(
                 principal.userId(),

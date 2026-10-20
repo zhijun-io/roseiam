@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.Instant;
 
-@TableName("password_recoveries")
-public class PasswordRecoveryEntity {
+@TableName("password_resets")
+public class PasswordResetEntity {
     @TableId(type = IdType.AUTO)
     public Long id;
 

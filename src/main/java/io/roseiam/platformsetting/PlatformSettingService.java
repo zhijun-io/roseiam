@@ -3,6 +3,7 @@ package io.roseiam.platformsetting;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.roseiam.audit.AuditService;
 import io.roseiam.config.ApiException;
+import io.roseiam.config.AppProperties;
 import io.roseiam.shared.UserPrincipal;
 import java.net.URI;
 import java.time.Clock;
@@ -14,14 +15,14 @@ import java.util.Set;
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.mail.autoconfigure.MailProperties;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 @Service
-public class PlatformSettingsService {
+public class PlatformSettingService {
 
     private static final Set<String> GENERAL_FIELDS = Set.of("platformName", "defaultLocale", "frontendBaseUrl");
     private static final Set<String> MAIL_FIELDS = Set.of(
@@ -43,23 +44,21 @@ public class PlatformSettingsService {
     private final String initialMailHost;
     private final int initialMailPort;
 
-    public PlatformSettingsService(
+    public PlatformSettingService(
             PlatformSettingMapper mapper,
             JsonMapper jsonMapper,
             AuditService audit,
             Clock clock,
-            @Value("${app.smtp.encryption-key:}") String encryptionKey,
-            @Value("${app.frontend-base-url:http://localhost:3000}") String initialFrontendUrl,
-            @Value("${spring.mail.host:localhost}") String initialMailHost,
-            @Value("${spring.mail.port:1025}") int initialMailPort) {
+            AppProperties properties,
+            MailProperties mailProperties) {
         this.mapper = mapper;
         this.jsonMapper = jsonMapper;
         this.audit = audit;
         this.clock = clock;
-        this.encryptionKey = encryptionKey;
-        this.initialFrontendUrl = initialFrontendUrl;
-        this.initialMailHost = initialMailHost;
-        this.initialMailPort = initialMailPort;
+        this.encryptionKey = properties.getSmtpEncryptionKey();
+        this.initialFrontendUrl = properties.getFrontendBaseUrl();
+        this.initialMailHost = mailProperties.getHost();
+        this.initialMailPort = mailProperties.getPort();
     }
 
     @Transactional

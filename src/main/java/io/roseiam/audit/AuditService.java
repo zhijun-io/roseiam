@@ -26,7 +26,7 @@ public class AuditService {
         this.clock = clock;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public void record(
             Long actorId, String action, String targetType, String targetId, String result, Map<String, ?> metadata) {
         String safeJson = null;

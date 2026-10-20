@@ -8,11 +8,11 @@ import org.springframework.stereotype.Component;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-public class PlatformSettingsInitializer implements ApplicationRunner {
+public class PlatformSettingInitializer implements ApplicationRunner {
 
-    private final PlatformSettingsService settings;
+    private final PlatformSettingService settings;
 
-    public PlatformSettingsInitializer(PlatformSettingsService settings) {
+    public PlatformSettingInitializer(PlatformSettingService settings) {
         this.settings = settings;
     }
 

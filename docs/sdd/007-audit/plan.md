@@ -19,7 +19,7 @@
 
 - **测试或证明：** 为事件字段、白名单 metadata、秘密过滤、只追加、关键变更同事务、失败登录审计故障和 UserSetting 不审计编写持久化/集成测试；实现共享 AuditEvent 服务及 repository。
 
-- **实现概要：** 实现 audit 单数包、Long 主键和版本化迁移；提供在业务事务中参与的写入端口、认证失败独立拒绝并报告运维错误；不提供修改/删除 API。
+- **实现概要：** 实现 audit 单数包、Long 主键和版本化迁移；`RoleService` 创建/更新/删除（包括权限集合更新）及 `UserService` 本人/管理员姓名更新通过 `@Audited` AOP 在业务事务中记录成功事件。邀请/激活、认证/重置、角色分配/撤销、账号状态、平台设置和查询审计仍通过 `AuditService.record(...)` 显式保存；失败登录使用独立事务记录。审计写入要求参与已存在的业务事务，不提供修改/删除 API。
 
 - **验证命令：** `./mvnw verify`。
 
@@ -76,7 +76,7 @@
 
 | 日期 | Slice | 验证命令和结果 | 偏差 |
 | --- | --- | --- | --- |
-| 2026-10-20 | Slice 1–3 | `ApiAuthorizationIntegrationTest` 验证审计查询留痕且只记录筛选字段名；`IdentityAndJsonbIntegrationTest` 覆盖认证事件；容器启动运行 Flyway schema；`mise exec -- ./mvnw verify` | 通过；365 天清理边界及审计故障回滚未逐项自动化覆盖 |
+| 2026-10-20 | Slice 1–3 | `ApiAuthorizationIntegrationTest` 验证审计查询留痕、筛选字段脱敏、`@Audited` 成功路径恰好记录一次及业务回滚时审计和业务更新一同回滚；`IdentityAndJsonbIntegrationTest` 覆盖认证事件；容器启动运行 Flyway schema；`mise exec -- ./mvnw verify` | 历史验证通过；本轮 `./mvnw -q test` 通过；审计持久化故障及 365 天清理边界未自动化覆盖 |
 
 
 ### 修订历史

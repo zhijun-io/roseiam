@@ -35,7 +35,7 @@
 
 - **测试或证明：** 编写设置变更后新邮件采用新 SMTP/frontendBaseUrl 的集成测试，覆盖投递失败不回滚已提交设置/审计；通过 Mailpit 验证实际邮件内容与链接。
 
-- **实现概要：** 把 SMTP 和前端基础 URL 读取封装为邮件发送端口；邀请和密码恢复复用当前已提交设置，数据库事务外发送，结果遵照对应 Spec。
+- **实现概要：** SMTP 和前端基础 URL 通过 `PlatformSettingService` 读取；邀请和密码重置通过事务提交事件与有界异步执行器投递邮件，不使用消息队列、持久化 outbox 或自动重试。投递是 best-effort；提交后的邮件故障不改变业务 API 响应，记录含请求 ID 的运维日志。
 
 - **验证命令：** `./mvnw verify；docker compose up --wait`。
 

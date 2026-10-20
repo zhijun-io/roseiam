@@ -6,7 +6,7 @@
 
 ## 风险与依赖
 
-- 计划采用设计建议的 Spring Boot 4.1.1、Java 25、Maven、PostgreSQL 18 与 Docker Compose。仓库目前没有应用源码或构建配置；首个切片需建立项目骨架，后续命令基于生成的 Maven Wrapper。
+- 当前实现使用根目录 `pom.xml`、Maven Wrapper、PostgreSQL 与 Docker Compose；本计划为已完成实现的历史记录，当前版本和依赖以构建配置为准。
 - 无；该计划是其他切片的运行前置。
 
 ## Slice 1：可重复启动 IAM 本地服务
@@ -35,7 +35,7 @@
 
 - **测试或证明：** `IdentityAndJsonbIntegrationTest` 验证首位管理员邀请重试不会重复创建用户和角色；容器冒烟验证启动时通过 Mailpit 投递邀请，另以 API 接受邀请并登录。无已激活管理员时创建 Invited User/UserInvitation，接受邀请后激活并保留 PlatformAdmin 角色；已有管理员时不覆盖。种入本地 general/mail 默认设置。
 
-- **实现概要：** 添加一次性命令/runner、初始化配置校验、事务服务、邮件适配器和 Mailpit 集成验证；不得创建默认密码或将生产秘密写入仓库。
+- **实现概要：** 添加 `BootstrapAdminRunner` 启动 runner、初始化配置、事务服务、after-commit 异步邮件事件和 Mailpit 集成验证；不得创建默认密码或将生产秘密写入仓库。
 
 - **验证命令：** `./mvnw verify`。
 
@@ -77,6 +77,7 @@
 | 日期 | Slice | 验证命令和结果 | 偏差 |
 | --- | --- | --- | --- |
 | 2026-10-20 | Slice 1–3 | `mise exec -- ./mvnw verify`、`docker compose config -q`、`docker compose -f compose.full.yaml config -q`、容器镜像构建及 `/actuator/health/readiness` 冒烟 | 通过；备份恢复演练与 CORS 配置测试未执行 |
+| 2026-10-20 | 邮件投递收敛 | `./mvnw -q test` | 通过；异步 after-commit 邀请投递与 SMTP 失败不改变 `201` 响应已集成验证；异步任务进程崩溃恢复未覆盖（该路径为 best-effort） |
 
 
 ### 修订历史

@@ -16,11 +16,9 @@ public final class AuthDtos {
     public record LoginResponse(
             String accessToken, String tokenType, Instant idleExpiresAt, Instant absoluteExpiresAt) {}
 
-    public record PasswordRecoveryRequest(
+    public record PasswordResetRequest(
             @NotBlank @Email @Size(max = 254) String email) {}
 
-    public record PasswordRecoveryCompletion(
+    public record PasswordResetCompletion(
             @NotBlank String token, @NotBlank String password) {}
-
-    public record RecoveryDelivery(String email, String token) {}
 }

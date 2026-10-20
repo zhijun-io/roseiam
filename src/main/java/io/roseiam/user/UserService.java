@@ -2,21 +2,23 @@ package io.roseiam.user;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.roseiam.audit.AuditService;
+import io.roseiam.audit.Audited;
 import io.roseiam.config.ApiException;
+import io.roseiam.config.RequestContext;
 import io.roseiam.identity.TokenService;
-import io.roseiam.identity.UserSessionEntity;
-import io.roseiam.identity.UserSessionMapper;
-import io.roseiam.role.RoleEntity;
-import io.roseiam.role.RoleMapper;
-import io.roseiam.role.UserRoleEntity;
-import io.roseiam.role.UserRoleMapper;
+import io.roseiam.identity.UserSessionService;
+import io.roseiam.platformsetting.InvitationMailRequested;
+import io.roseiam.role.RoleService;
 import io.roseiam.shared.UserPrincipal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -25,33 +27,33 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UserService {
     private final UserMapper users;
-    private final RoleMapper roles;
-    private final UserRoleMapper userRoles;
+    private final RoleService roles;
     private final UserInvitationMapper invitations;
-    private final UserSessionMapper sessions;
+    private final UserSessionService sessions;
     private final TokenService tokens;
     private final PasswordEncoder passwords;
     private final AuditService audit;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public UserService(
             UserMapper users,
-            RoleMapper roles,
-            UserRoleMapper userRoles,
+            RoleService roles,
             UserInvitationMapper invitations,
-            UserSessionMapper sessions,
+            UserSessionService sessions,
             TokenService tokens,
             PasswordEncoder passwords,
             AuditService audit,
+            ApplicationEventPublisher events,
             Clock clock) {
         this.users = users;
         this.roles = roles;
-        this.userRoles = userRoles;
         this.invitations = invitations;
         this.sessions = sessions;
         this.tokens = tokens;
         this.passwords = passwords;
         this.audit = audit;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -78,21 +80,8 @@ public class UserService {
             user.setUpdatedAt(now);
             users.insert(user);
         }
-        if (request.roleIds() != null)
-            for (Long roleId : request.roleIds()) {
-                if (roles.selectById(roleId) == null) throw ApiException.badRequest("Unknown role");
-                if (userRoles.selectCount(new LambdaQueryWrapper<UserRoleEntity>()
-                                .eq(UserRoleEntity::getUserId, user.getId())
-                                .eq(UserRoleEntity::getRoleId, roleId))
-                        == 0) {
-                    UserRoleEntity link = new UserRoleEntity();
-                    link.userId = user.getId();
-                    link.roleId = roleId;
-                    link.assignedBy = actor.userId();
-                    link.assignedAt = now;
-                    userRoles.insert(link);
-                }
-            }
+        Set<Long> requestedRoleIds = request.roleIds() == null ? Set.of() : request.roleIds();
+        roles.assignOnInvitation(user.getId(), requestedRoleIds, actor.userId());
         String token = tokens.create();
         UserInvitationEntity invitation = new UserInvitationEntity();
         invitation.userId = user.getId();
@@ -102,6 +91,7 @@ public class UserService {
         invitation.createdAt = now;
         invitations.insert(invitation);
         audit.record(actor.userId(), "user.invited", "User", user.getId().toString(), "SUCCESS", null);
+        events.publishEvent(new InvitationMailRequested(email, token, RequestContext.requestId()));
         return new UserDtos.CreatedInvitation(
                 new UserDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
                 new UserDtos.InvitationDelivery(email, token));
@@ -109,11 +99,7 @@ public class UserService {
 
     @Transactional
     public UserDtos.CreatedInvitation createBootstrapInvitation(String rawEmail) {
-        RoleEntity adminRole = roles.selectOne(new LambdaQueryWrapper<RoleEntity>()
-                .eq(RoleEntity::getCode, "PlatformAdmin")
-                .last("FOR UPDATE"));
-        if (adminRole == null) throw new IllegalStateException("PlatformAdmin role is not seeded");
-        if (activeAdminCount(adminRole.getId()) > 0) return null;
+        if (roles.activePlatformAdminExistsForBootstrap()) return null;
         String email = rawEmail.trim().toLowerCase(java.util.Locale.ROOT);
         Instant now = clock.instant();
         UserEntity user = users.selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, email));
@@ -124,16 +110,8 @@ public class UserService {
             user.setCreatedAt(now);
             user.setUpdatedAt(now);
             users.insert(user);
-            UserRoleEntity link = new UserRoleEntity();
-            link.userId = user.getId();
-            link.roleId = adminRole.getId();
-            link.assignedAt = now;
-            userRoles.insert(link);
-        } else if (!"INVITED".equals(user.getStatus())
-                || userRoles.selectCount(new LambdaQueryWrapper<UserRoleEntity>()
-                                .eq(UserRoleEntity::getUserId, user.getId())
-                                .eq(UserRoleEntity::getRoleId, adminRole.getId()))
-                        == 0) {
+            roles.assignBootstrapPlatformAdmin(user.getId());
+        } else if (!"INVITED".equals(user.getStatus()) || !roles.hasPlatformAdminRole(user.getId())) {
             throw ApiException.conflict("Bootstrap email already belongs to an account");
         }
         invitations.update(
@@ -151,6 +129,7 @@ public class UserService {
         invitation.createdAt = now;
         invitations.insert(invitation);
         audit.record(null, "bootstrap.admin.invited", "User", user.getId().toString(), "SUCCESS", null);
+        events.publishEvent(new InvitationMailRequested(email, token, RequestContext.requestId()));
         return new UserDtos.CreatedInvitation(
                 new UserDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
                 new UserDtos.InvitationDelivery(email, token));
@@ -192,11 +171,8 @@ public class UserService {
         if (status != null && !status.isBlank())
             filter.eq(UserEntity::getStatus, status.trim().toUpperCase(java.util.Locale.ROOT));
         long total = users.selectCount(filter);
-        List<UserDtos.UserResponse> items = users
-                .selectList(filter.orderByAsc(UserEntity::getId).last("LIMIT " + n + " OFFSET " + (long) p * n))
-                .stream()
-                .map(this::summary)
-                .toList();
+        Page<UserEntity> result = users.selectPage(new Page<>((long) p + 1, n), filter.orderByAsc(UserEntity::getId));
+        List<UserDtos.UserResponse> items = summaries(result.getRecords());
         return new UserDtos.UserPageResponse(items, p, n, total, (int) Math.ceil((double) total / n));
     }
 
@@ -208,11 +184,23 @@ public class UserService {
 
     @PreAuthorize("hasAuthority('users:write')")
     @Transactional
+    @Audited(
+            action = "user.updated",
+            targetType = "User",
+            targetIdParameter = 0,
+            changedFields = {"name"},
+            actorParameter = 2)
     public UserDtos.UserResponse updateName(long id, String name, UserPrincipal actor) {
         return updateNameInternal(id, name, actor);
     }
 
     @Transactional
+    @Audited(
+            action = "user.updated",
+            targetType = "User",
+            targetIdParameter = 0,
+            changedFields = {"name"},
+            actorParameter = 2)
     public UserDtos.UserResponse updateOwnName(long id, String name, UserPrincipal actor) {
         return updateNameInternal(id, name, actor);
     }
@@ -225,13 +213,6 @@ public class UserService {
                         .set(UserEntity::getName, name)
                         .set(UserEntity::getUpdatedAt, clock.instant()));
         if (n == 0) throw ApiException.notFound("User not found");
-        audit.record(
-                actor.userId(),
-                "user.updated",
-                "User",
-                Long.toString(id),
-                "SUCCESS",
-                Map.of("changedFields", List.of("name")));
         return listOne(id);
     }
 
@@ -248,12 +229,7 @@ public class UserService {
                         .set(UserEntity::getStatus, "DISABLED")
                         .set(UserEntity::getUpdatedAt, clock.instant()));
         if (changed > 0) {
-            sessions.update(
-                    null,
-                    new LambdaUpdateWrapper<UserSessionEntity>()
-                            .eq(UserSessionEntity::getUserId, id)
-                            .isNull(UserSessionEntity::getRevokedAt)
-                            .set(UserSessionEntity::getRevokedAt, clock.instant()));
+            sessions.revokeAllForUser(id, clock.instant());
             audit.record(actor.userId(), "user.disabled", "User", Long.toString(id), "SUCCESS", null);
         }
     }
@@ -279,16 +255,19 @@ public class UserService {
     }
 
     private UserDtos.UserResponse summary(UserEntity user) {
-        List<Long> roleIds = userRoles
-                .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getUserId, user.getId()))
-                .stream()
-                .map(link -> link.roleId)
+        return summary(user, roles.roleCodesForUser(user.getId()));
+    }
+
+    private List<UserDtos.UserResponse> summaries(List<UserEntity> users) {
+        if (users.isEmpty()) return List.of();
+        Map<Long, List<String>> roleCodesByUser = roles.roleCodesForUsers(
+                users.stream().map(UserEntity::getId).collect(java.util.stream.Collectors.toSet()));
+        return users.stream()
+                .map(user -> summary(user, roleCodesByUser.getOrDefault(user.getId(), List.of())))
                 .toList();
-        List<String> roleCodes = roleIds.isEmpty()
-                ? List.of()
-                : roles.selectList(new LambdaQueryWrapper<RoleEntity>().in(RoleEntity::getId, roleIds)).stream()
-                        .map(RoleEntity::getCode)
-                        .toList();
+    }
+
+    private UserDtos.UserResponse summary(UserEntity user, List<String> roleCodes) {
         return new UserDtos.UserResponse(
                 user.getId(),
                 user.getEmail(),
@@ -301,29 +280,6 @@ public class UserService {
     }
 
     private void protectLastAdmin(long id) {
-        RoleEntity admin = roles.selectOne(new LambdaQueryWrapper<RoleEntity>()
-                .eq(RoleEntity::getCode, "PlatformAdmin")
-                .last("FOR UPDATE"));
-        if (admin != null
-                && userRoles.selectCount(new LambdaQueryWrapper<UserRoleEntity>()
-                                .eq(UserRoleEntity::getUserId, id)
-                                .eq(UserRoleEntity::getRoleId, admin.getId()))
-                        > 0
-                && activeAdminCount(admin.getId()) <= 1)
-            throw ApiException.conflict("The last active PlatformAdmin cannot be disabled");
-    }
-
-    private long activeAdminCount(long roleId) {
-        List<Long> ids =
-                userRoles
-                        .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getRoleId, roleId))
-                        .stream()
-                        .map(link -> link.userId)
-                        .toList();
-        return ids.isEmpty()
-                ? 0
-                : users.selectCount(new LambdaQueryWrapper<UserEntity>()
-                        .in(UserEntity::getId, ids)
-                        .eq(UserEntity::getStatus, "ACTIVE"));
+        roles.ensureNotLastPlatformAdmin(id);
     }
 }
