@@ -1,7 +1,6 @@
 package io.roseiam.audit;
 
 import io.roseiam.config.RequestContext;
-import io.roseiam.persistence.entity.AuditEventEntity;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,7 +8,7 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class AuditService {
@@ -18,12 +17,12 @@ public class AuditService {
             List.of("changedFields", "filtersUsed", "fromStatus", "toStatus", "reason");
 
     private final AuditMapper mapper;
-    private final ObjectMapper objectMapper;
+    private final JsonMapper jsonMapper;
     private final Clock clock;
 
-    public AuditService(AuditMapper mapper, ObjectMapper objectMapper, Clock clock) {
+    public AuditService(AuditMapper mapper, JsonMapper jsonMapper, Clock clock) {
         this.mapper = mapper;
-        this.objectMapper = objectMapper;
+        this.jsonMapper = jsonMapper;
         this.clock = clock;
     }
 
@@ -42,7 +41,7 @@ public class AuditService {
                 }
             });
             try {
-                safeJson = objectMapper.writeValueAsString(safe);
+                safeJson = jsonMapper.writeValueAsString(safe);
             } catch (Exception exception) {
                 throw new IllegalStateException("Could not encode audit metadata", exception);
             }

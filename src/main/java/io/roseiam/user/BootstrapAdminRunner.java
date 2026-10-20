@@ -1,6 +1,5 @@
 package io.roseiam.user;
 
-import io.roseiam.identity.AuthDtos;
 import io.roseiam.platformsetting.MailDeliveryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +28,7 @@ public class BootstrapAdminRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         if (email.isBlank()) return;
-        AuthDtos.CreatedInvitation invitation = users.createBootstrapInvitation(email);
+        UserDtos.CreatedInvitation invitation = users.createBootstrapInvitation(email);
         if (invitation == null) {
             log.info("Bootstrap administrator already exists");
             return;

@@ -1,4 +1,4 @@
-package io.roseiam.identity;
+package io.roseiam.shared;
 
 import java.util.Set;
 

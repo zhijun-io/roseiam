@@ -3,9 +3,7 @@ package io.roseiam.platformsetting;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.roseiam.audit.AuditService;
 import io.roseiam.config.ApiException;
-import io.roseiam.config.JsonCodec;
-import io.roseiam.identity.UserPrincipal;
-import io.roseiam.persistence.entity.PlatformSettingEntity;
+import io.roseiam.shared.UserPrincipal;
 import java.net.URI;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -20,6 +18,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class PlatformSettingsService {
@@ -36,7 +35,7 @@ public class PlatformSettingsService {
             "clearSmtpPassword");
 
     private final PlatformSettingMapper mapper;
-    private final JsonCodec json;
+    private final JsonMapper jsonMapper;
     private final AuditService audit;
     private final Clock clock;
     private final String encryptionKey;
@@ -46,7 +45,7 @@ public class PlatformSettingsService {
 
     public PlatformSettingsService(
             PlatformSettingMapper mapper,
-            JsonCodec json,
+            JsonMapper jsonMapper,
             AuditService audit,
             Clock clock,
             @Value("${app.smtp.encryption-key:}") String encryptionKey,
@@ -54,7 +53,7 @@ public class PlatformSettingsService {
             @Value("${spring.mail.host:localhost}") String initialMailHost,
             @Value("${spring.mail.port:1025}") int initialMailPort) {
         this.mapper = mapper;
-        this.json = json;
+        this.jsonMapper = jsonMapper;
         this.audit = audit;
         this.clock = clock;
         this.encryptionKey = encryptionKey;
@@ -207,7 +206,7 @@ public class PlatformSettingsService {
                 == 0) {
             PlatformSettingEntity setting = new PlatformSettingEntity();
             setting.type = type;
-            setting.value = json.write(value);
+            setting.value = jsonMapper.writeValueAsString(value);
             setting.updatedAt = clock.instant();
             mapper.insert(setting);
         }
@@ -217,14 +216,14 @@ public class PlatformSettingsService {
         PlatformSettingEntity setting = mapper.selectOne(
                 new LambdaQueryWrapper<PlatformSettingEntity>().eq(PlatformSettingEntity::getType, type));
         if (setting == null) throw new IllegalStateException("Platform setting defaults have not been initialized");
-        return json.readMap(setting.value);
+        return jsonMapper.readValue(setting.value, new tools.jackson.core.type.TypeReference<Map<String, Object>>() {});
     }
 
     private void write(String type, Map<String, Object> value) {
         PlatformSettingEntity setting = mapper.selectOne(
                 new LambdaQueryWrapper<PlatformSettingEntity>().eq(PlatformSettingEntity::getType, type));
         if (setting == null) throw new IllegalStateException("Platform setting defaults have not been initialized");
-        setting.value = json.write(value);
+        setting.value = jsonMapper.writeValueAsString(value);
         setting.updatedAt = clock.instant();
         mapper.updateById(setting);
     }

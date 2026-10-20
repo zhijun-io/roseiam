@@ -1,4 +1,4 @@
-package io.roseiam.persistence.entity;
+package io.roseiam.user;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;

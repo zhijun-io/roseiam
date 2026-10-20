@@ -1,7 +1,7 @@
 package io.roseiam.role;
 
 import io.roseiam.config.ApiException;
-import io.roseiam.identity.UserPrincipal;
+import io.roseiam.shared.UserPrincipal;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.Map;

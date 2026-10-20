@@ -5,23 +5,22 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.roseiam.config.ApiException;
-import io.roseiam.config.JsonCodec;
-import io.roseiam.config.TokenService;
 import io.roseiam.identity.AuthDtos;
 import io.roseiam.identity.IdentityService;
-import io.roseiam.identity.UserPrincipal;
-import io.roseiam.identity.mapper.IdentityMapper;
-import io.roseiam.persistence.entity.PlatformSettingEntity;
-import io.roseiam.persistence.entity.UserInvitationEntity;
-import io.roseiam.persistence.entity.UserRoleEntity;
-import io.roseiam.persistence.entity.UserSessionEntity;
-import io.roseiam.persistence.mapper.UserInvitationMapper;
-import io.roseiam.persistence.mapper.UserRoleMapper;
+import io.roseiam.identity.TokenService;
+import io.roseiam.identity.UserSessionEntity;
+import io.roseiam.identity.UserSessionMapper;
+import io.roseiam.platformsetting.PlatformSettingEntity;
 import io.roseiam.platformsetting.PlatformSettingMapper;
+import io.roseiam.role.UserRoleEntity;
+import io.roseiam.role.UserRoleMapper;
+import io.roseiam.shared.UserPrincipal;
+import io.roseiam.user.UserEntity;
+import io.roseiam.user.UserInvitationEntity;
+import io.roseiam.user.UserInvitationMapper;
+import io.roseiam.user.UserMapper;
 import io.roseiam.user.UserService;
 import io.roseiam.user.UserSettingService;
-import io.roseiam.user.persistence.UserEntity;
-import io.roseiam.user.persistence.UserMapper;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
@@ -46,7 +45,7 @@ class IdentityAndJsonbIntegrationTest {
     private UserMapper users;
 
     @Autowired
-    private IdentityMapper sessions;
+    private UserSessionMapper sessions;
 
     @Autowired
     private PlatformSettingMapper platformSettings;
@@ -61,7 +60,7 @@ class IdentityAndJsonbIntegrationTest {
     private TokenService tokens;
 
     @Autowired
-    private JsonCodec json;
+    private tools.jackson.databind.json.JsonMapper jsonMapper;
 
     @Autowired
     private UserService userLifecycle;
@@ -110,7 +109,9 @@ class IdentityAndJsonbIntegrationTest {
         PlatformSettingEntity stored = platformSettings.selectOne(
                 new LambdaQueryWrapper<PlatformSettingEntity>().eq(PlatformSettingEntity::getType, "integration-test"));
 
-        assertThat(json.readMap(stored.value)).isEqualTo(Map.of("enabled", true, "count", 2));
+        assertThat(jsonMapper.readValue(
+                        stored.value, new tools.jackson.core.type.TypeReference<Map<String, Object>>() {}))
+                .isEqualTo(Map.of("enabled", true, "count", 2));
     }
 
     @Test
@@ -127,8 +128,8 @@ class IdentityAndJsonbIntegrationTest {
     void bootstrapInvitationCanBeRetriedWithoutCreatingDuplicateUsersOrRoles() {
         String email = "bootstrap@example.test";
 
-        AuthDtos.CreatedInvitation first = userLifecycle.createBootstrapInvitation(email);
-        AuthDtos.CreatedInvitation second = userLifecycle.createBootstrapInvitation(email);
+        io.roseiam.user.UserDtos.CreatedInvitation first = userLifecycle.createBootstrapInvitation(email);
+        io.roseiam.user.UserDtos.CreatedInvitation second = userLifecycle.createBootstrapInvitation(email);
 
         assertThat(first).isNotNull();
         assertThat(second).isNotNull();

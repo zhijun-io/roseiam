@@ -1,4 +1,4 @@
-package io.roseiam.user.persistence;
+package io.roseiam.user;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 

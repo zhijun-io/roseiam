@@ -9,12 +9,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 @MapperScan({
     "io.roseiam.audit",
-    "io.roseiam.identity.mapper",
+    "io.roseiam.identity",
     "io.roseiam.platformsetting",
-    "io.roseiam.persistence.mapper",
     "io.roseiam.role",
-    "io.roseiam.user.mapper",
-    "io.roseiam.user.persistence"
+    "io.roseiam.user"
 })
 public class RoseiamApplication {
 

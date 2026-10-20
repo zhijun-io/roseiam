@@ -1,7 +1,7 @@
 package io.roseiam.audit;
 
 import io.roseiam.config.ApiException;
-import io.roseiam.identity.UserPrincipal;
+import io.roseiam.shared.UserPrincipal;
 import java.time.Instant;
 import java.util.Map;
 import org.springframework.security.core.Authentication;

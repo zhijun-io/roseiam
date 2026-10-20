@@ -1,6 +1,5 @@
-package io.roseiam.persistence.mapper;
+package io.roseiam.user;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import io.roseiam.persistence.entity.UserInvitationEntity;
 
 public interface UserInvitationMapper extends BaseMapper<UserInvitationEntity> {}

@@ -2,10 +2,7 @@ package io.roseiam.user;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.roseiam.config.ApiException;
-import io.roseiam.config.JsonCodec;
-import io.roseiam.identity.UserPrincipal;
-import io.roseiam.persistence.entity.UserSettingEntity;
-import io.roseiam.user.mapper.UserSettingMapper;
+import io.roseiam.shared.UserPrincipal;
 import java.time.Clock;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
@@ -14,16 +11,17 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class UserSettingService {
     private final UserSettingMapper mapper;
-    private final JsonCodec json;
+    private final JsonMapper jsonMapper;
     private final Clock clock;
 
-    public UserSettingService(UserSettingMapper mapper, JsonCodec json, Clock clock) {
+    public UserSettingService(UserSettingMapper mapper, JsonMapper jsonMapper, Clock clock) {
         this.mapper = mapper;
-        this.json = json;
+        this.jsonMapper = jsonMapper;
         this.clock = clock;
     }
 
@@ -48,7 +46,7 @@ public class UserSettingService {
         }
         if (!Set.of("light", "dark", "system").contains(text(value, "theme")))
             throw ApiException.badRequest("theme must be light, dark or system");
-        String data = json.write(value);
+        String data = jsonMapper.writeValueAsString(value);
         UserSettingEntity setting = mapper.selectOne(new LambdaQueryWrapper<UserSettingEntity>()
                 .eq(UserSettingEntity::getUserId, user.userId())
                 .eq(UserSettingEntity::getType, "preferences"));
@@ -71,7 +69,8 @@ public class UserSettingService {
         String data = setting == null ? null : setting.value;
         return (data == null
                         ? java.util.Optional.<Map<String, Object>>empty()
-                        : java.util.Optional.of(json.readMap(data)))
+                        : java.util.Optional.of(jsonMapper.readValue(
+                                data, new tools.jackson.core.type.TypeReference<Map<String, Object>>() {})))
                 .orElseGet(() ->
                         new LinkedHashMap<>(Map.of("locale", "zh-CN", "timeZone", "Asia/Shanghai", "theme", "system")));
     }

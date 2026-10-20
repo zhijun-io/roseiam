@@ -1,4 +1,4 @@
-package io.roseiam.persistence;
+package io.roseiam.shared;
 
 import java.sql.CallableStatement;
 import java.sql.PreparedStatement;

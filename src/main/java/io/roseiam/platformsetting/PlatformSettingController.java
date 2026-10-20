@@ -1,7 +1,7 @@
 package io.roseiam.platformsetting;
 
 import io.roseiam.config.ApiException;
-import io.roseiam.identity.UserPrincipal;
+import io.roseiam.shared.UserPrincipal;
 import java.util.Map;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,10 +12,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/platform-settings")
-public class PlatformSettingsController {
+public class PlatformSettingController {
     private final PlatformSettingsService settings;
 
-    public PlatformSettingsController(PlatformSettingsService settings) {
+    public PlatformSettingController(PlatformSettingsService settings) {
         this.settings = settings;
     }
 

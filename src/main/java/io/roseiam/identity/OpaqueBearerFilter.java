@@ -2,12 +2,10 @@ package io.roseiam.identity;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import io.roseiam.config.AuthorizationQuery;
-import io.roseiam.config.TokenService;
-import io.roseiam.identity.mapper.IdentityMapper;
-import io.roseiam.persistence.entity.UserSessionEntity;
-import io.roseiam.user.persistence.UserEntity;
-import io.roseiam.user.persistence.UserMapper;
+import io.roseiam.role.AuthorizationQuery;
+import io.roseiam.shared.UserPrincipal;
+import io.roseiam.user.UserEntity;
+import io.roseiam.user.UserMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,14 +20,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Component
 public class OpaqueBearerFilter extends OncePerRequestFilter {
-    private final IdentityMapper sessions;
+    private final UserSessionMapper sessions;
     private final UserMapper users;
     private final TokenService tokens;
     private final AuthorizationQuery authorization;
     private final Clock clock;
 
     public OpaqueBearerFilter(
-            IdentityMapper sessions,
+            UserSessionMapper sessions,
             UserMapper users,
             TokenService tokens,
             AuthorizationQuery authorization,

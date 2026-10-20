@@ -4,19 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import io.roseiam.audit.AuditService;
 import io.roseiam.config.ApiException;
-import io.roseiam.config.TokenService;
-import io.roseiam.identity.AuthDtos;
-import io.roseiam.identity.UserPrincipal;
-import io.roseiam.identity.mapper.IdentityMapper;
-import io.roseiam.persistence.entity.UserInvitationEntity;
-import io.roseiam.persistence.entity.UserRoleEntity;
-import io.roseiam.persistence.entity.UserSessionEntity;
-import io.roseiam.persistence.mapper.UserInvitationMapper;
-import io.roseiam.persistence.mapper.UserRoleMapper;
+import io.roseiam.identity.TokenService;
+import io.roseiam.identity.UserSessionEntity;
+import io.roseiam.identity.UserSessionMapper;
 import io.roseiam.role.RoleEntity;
 import io.roseiam.role.RoleMapper;
-import io.roseiam.user.persistence.UserEntity;
-import io.roseiam.user.persistence.UserMapper;
+import io.roseiam.role.UserRoleEntity;
+import io.roseiam.role.UserRoleMapper;
+import io.roseiam.shared.UserPrincipal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -33,7 +28,7 @@ public class UserService {
     private final RoleMapper roles;
     private final UserRoleMapper userRoles;
     private final UserInvitationMapper invitations;
-    private final IdentityMapper sessions;
+    private final UserSessionMapper sessions;
     private final TokenService tokens;
     private final PasswordEncoder passwords;
     private final AuditService audit;
@@ -44,7 +39,7 @@ public class UserService {
             RoleMapper roles,
             UserRoleMapper userRoles,
             UserInvitationMapper invitations,
-            IdentityMapper sessions,
+            UserSessionMapper sessions,
             TokenService tokens,
             PasswordEncoder passwords,
             AuditService audit,
@@ -62,7 +57,7 @@ public class UserService {
 
     @PreAuthorize("hasAuthority('users:invite')")
     @Transactional
-    public AuthDtos.CreatedInvitation invite(AuthDtos.UserCreateRequest request, UserPrincipal actor) {
+    public UserDtos.CreatedInvitation invite(UserDtos.UserCreateRequest request, UserPrincipal actor) {
         String email = request.email().trim().toLowerCase(java.util.Locale.ROOT);
         Instant now = clock.instant();
         UserEntity user = users.selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, email));
@@ -107,13 +102,13 @@ public class UserService {
         invitation.createdAt = now;
         invitations.insert(invitation);
         audit.record(actor.userId(), "user.invited", "User", user.getId().toString(), "SUCCESS", null);
-        return new AuthDtos.CreatedInvitation(
-                new AuthDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
-                new AuthDtos.InvitationDelivery(email, token));
+        return new UserDtos.CreatedInvitation(
+                new UserDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
+                new UserDtos.InvitationDelivery(email, token));
     }
 
     @Transactional
-    public AuthDtos.CreatedInvitation createBootstrapInvitation(String rawEmail) {
+    public UserDtos.CreatedInvitation createBootstrapInvitation(String rawEmail) {
         RoleEntity adminRole = roles.selectOne(new LambdaQueryWrapper<RoleEntity>()
                 .eq(RoleEntity::getCode, "PlatformAdmin")
                 .last("FOR UPDATE"));
@@ -156,13 +151,13 @@ public class UserService {
         invitation.createdAt = now;
         invitations.insert(invitation);
         audit.record(null, "bootstrap.admin.invited", "User", user.getId().toString(), "SUCCESS", null);
-        return new AuthDtos.CreatedInvitation(
-                new AuthDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
-                new AuthDtos.InvitationDelivery(email, token));
+        return new UserDtos.CreatedInvitation(
+                new UserDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
+                new UserDtos.InvitationDelivery(email, token));
     }
 
     @Transactional
-    public void accept(AuthDtos.UserAcceptInvitationRequest request) {
+    public void accept(UserDtos.UserAcceptInvitationRequest request) {
         Instant now = clock.instant();
         UserInvitationEntity invitation = invitations.selectOne(new LambdaQueryWrapper<UserInvitationEntity>()
                 .eq(UserInvitationEntity::getTokenHash, tokens.hash(request.token()))
@@ -191,38 +186,38 @@ public class UserService {
 
     @PreAuthorize("hasAuthority('users:read')")
     @Transactional(readOnly = true)
-    public AuthDtos.UserPageResponse list(int page, int size, String status) {
+    public UserDtos.UserPageResponse list(int page, int size, String status) {
         int p = Math.max(0, page), n = Math.min(100, Math.max(1, size));
         LambdaQueryWrapper<UserEntity> filter = new LambdaQueryWrapper<>();
         if (status != null && !status.isBlank())
             filter.eq(UserEntity::getStatus, status.trim().toUpperCase(java.util.Locale.ROOT));
         long total = users.selectCount(filter);
-        List<AuthDtos.UserResponse> items = users
+        List<UserDtos.UserResponse> items = users
                 .selectList(filter.orderByAsc(UserEntity::getId).last("LIMIT " + n + " OFFSET " + (long) p * n))
                 .stream()
                 .map(this::summary)
                 .toList();
-        return new AuthDtos.UserPageResponse(items, p, n, total, (int) Math.ceil((double) total / n));
+        return new UserDtos.UserPageResponse(items, p, n, total, (int) Math.ceil((double) total / n));
     }
 
     @PreAuthorize("hasAuthority('users:read')")
     @Transactional(readOnly = true)
-    public AuthDtos.UserResponse getUser(long id) {
+    public UserDtos.UserResponse getUser(long id) {
         return listOne(id);
     }
 
     @PreAuthorize("hasAuthority('users:write')")
     @Transactional
-    public AuthDtos.UserResponse updateName(long id, String name, UserPrincipal actor) {
+    public UserDtos.UserResponse updateName(long id, String name, UserPrincipal actor) {
         return updateNameInternal(id, name, actor);
     }
 
     @Transactional
-    public AuthDtos.UserResponse updateOwnName(long id, String name, UserPrincipal actor) {
+    public UserDtos.UserResponse updateOwnName(long id, String name, UserPrincipal actor) {
         return updateNameInternal(id, name, actor);
     }
 
-    private AuthDtos.UserResponse updateNameInternal(long id, String name, UserPrincipal actor) {
+    private UserDtos.UserResponse updateNameInternal(long id, String name, UserPrincipal actor) {
         int n = users.update(
                 null,
                 new LambdaUpdateWrapper<UserEntity>()
@@ -277,13 +272,13 @@ public class UserService {
         if (changed > 0) audit.record(actor.userId(), "user.enabled", "User", Long.toString(id), "SUCCESS", null);
     }
 
-    public AuthDtos.UserResponse listOne(long id) {
+    public UserDtos.UserResponse listOne(long id) {
         UserEntity user = users.selectById(id);
         if (user == null) throw ApiException.notFound("User not found");
         return summary(user);
     }
 
-    private AuthDtos.UserResponse summary(UserEntity user) {
+    private UserDtos.UserResponse summary(UserEntity user) {
         List<Long> roleIds = userRoles
                 .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getUserId, user.getId()))
                 .stream()
@@ -294,7 +289,7 @@ public class UserService {
                 : roles.selectList(new LambdaQueryWrapper<RoleEntity>().in(RoleEntity::getId, roleIds)).stream()
                         .map(RoleEntity::getCode)
                         .toList();
-        return new AuthDtos.UserResponse(
+        return new UserDtos.UserResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getEmailVerifiedAt(),

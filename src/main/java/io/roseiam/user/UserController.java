@@ -1,9 +1,8 @@
 package io.roseiam.user;
 
 import io.roseiam.config.ApiException;
-import io.roseiam.identity.AuthDtos;
-import io.roseiam.identity.UserPrincipal;
 import io.roseiam.platformsetting.MailDeliveryService;
+import io.roseiam.shared.UserPrincipal;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,8 +32,8 @@ public class UserController {
     }
 
     @PostMapping("/user-invitations")
-    public ResponseEntity<AuthDtos.UserCreateResponse> invite(
-            @Valid @RequestBody AuthDtos.UserCreateRequest request, Authentication auth) {
+    public ResponseEntity<UserDtos.UserCreateResponse> invite(
+            @Valid @RequestBody UserDtos.UserCreateRequest request, Authentication auth) {
         var created = users.invite(request, principal(auth));
         try {
             mail.sendInvitation(created.delivery().email(), created.delivery().token());
@@ -49,13 +48,13 @@ public class UserController {
     }
 
     @PostMapping("/user-invitations/acceptance")
-    public ResponseEntity<Void> accept(@Valid @RequestBody AuthDtos.UserAcceptInvitationRequest request) {
+    public ResponseEntity<Void> accept(@Valid @RequestBody UserDtos.UserAcceptInvitationRequest request) {
         users.accept(request);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/users")
-    public AuthDtos.UserPageResponse list(
+    public UserDtos.UserPageResponse list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status) {
@@ -63,38 +62,38 @@ public class UserController {
     }
 
     @GetMapping("/users/{id}")
-    public AuthDtos.UserResponse get(@PathVariable long id) {
+    public UserDtos.UserResponse get(@PathVariable long id) {
         return users.getUser(id);
     }
 
     @PatchMapping("/users/{id}")
-    public AuthDtos.UserResponse update(
-            @PathVariable long id, @Valid @RequestBody AuthDtos.UserRequest request, Authentication auth) {
+    public UserDtos.UserResponse update(
+            @PathVariable long id, @Valid @RequestBody UserDtos.UserRequest request, Authentication auth) {
         return users.updateName(id, request.name(), principal(auth));
     }
 
     @PostMapping("/users/{id}/disable")
-    public AuthDtos.UserResponse disable(@PathVariable long id, Authentication auth) {
+    public UserDtos.UserResponse disable(@PathVariable long id, Authentication auth) {
         users.disable(id, principal(auth));
         return users.listOne(id);
     }
 
     @PostMapping("/users/{id}/enable")
-    public AuthDtos.UserResponse enable(@PathVariable long id, Authentication auth) {
+    public UserDtos.UserResponse enable(@PathVariable long id, Authentication auth) {
         users.enable(id, principal(auth));
         return users.listOne(id);
     }
 
     @GetMapping("/me")
-    public AuthDtos.UserMeResponse me(Authentication auth) {
+    public UserDtos.UserMeResponse me(Authentication auth) {
         var user = users.listOne(principal(auth).userId());
-        return new AuthDtos.UserMeResponse(user.id(), user.email(), user.emailVerifiedAt(), user.name(), user.status());
+        return new UserDtos.UserMeResponse(user.id(), user.email(), user.emailVerifiedAt(), user.name(), user.status());
     }
 
     @PatchMapping("/me")
-    public AuthDtos.UserMeResponse updateMe(@Valid @RequestBody AuthDtos.UserRequest request, Authentication auth) {
+    public UserDtos.UserMeResponse updateMe(@Valid @RequestBody UserDtos.UserRequest request, Authentication auth) {
         var user = users.updateOwnName(principal(auth).userId(), request.name(), principal(auth));
-        return new AuthDtos.UserMeResponse(user.id(), user.email(), user.emailVerifiedAt(), user.name(), user.status());
+        return new UserDtos.UserMeResponse(user.id(), user.email(), user.emailVerifiedAt(), user.name(), user.status());
     }
 
     @GetMapping("/me/settings")

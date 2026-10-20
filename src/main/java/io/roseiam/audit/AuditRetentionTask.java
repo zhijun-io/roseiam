@@ -1,7 +1,6 @@
 package io.roseiam.audit;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import io.roseiam.persistence.entity.AuditEventEntity;
 import java.time.Clock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;

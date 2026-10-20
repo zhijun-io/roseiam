@@ -1,4 +1,4 @@
-package io.roseiam.config;
+package io.roseiam.identity;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

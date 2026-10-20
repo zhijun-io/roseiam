@@ -4,13 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import io.roseiam.audit.AuditService;
 import io.roseiam.config.ApiException;
-import io.roseiam.config.TokenService;
-import io.roseiam.identity.mapper.IdentityMapper;
-import io.roseiam.persistence.entity.PasswordRecoveryEntity;
-import io.roseiam.persistence.entity.UserSessionEntity;
-import io.roseiam.persistence.mapper.PasswordRecoveryMapper;
-import io.roseiam.user.persistence.UserEntity;
-import io.roseiam.user.persistence.UserMapper;
+import io.roseiam.user.UserEntity;
+import io.roseiam.user.UserMapper;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class IdentityService {
     private static final Logger logger = LoggerFactory.getLogger(IdentityService.class);
-    private final IdentityMapper sessions;
+    private final UserSessionMapper sessions;
     private final UserMapper users;
     private final PasswordRecoveryMapper recoveries;
     private final PasswordEncoder passwords;
@@ -40,7 +35,7 @@ public class IdentityService {
     private final String dummyHash;
 
     public IdentityService(
-            IdentityMapper sessions,
+            UserSessionMapper sessions,
             UserMapper users,
             PasswordRecoveryMapper recoveries,
             PasswordEncoder passwords,

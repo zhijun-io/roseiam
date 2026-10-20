@@ -2,9 +2,7 @@ package io.roseiam.audit;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.roseiam.config.ApiException;
-import io.roseiam.config.JsonCodec;
-import io.roseiam.identity.UserPrincipal;
-import io.roseiam.persistence.entity.AuditEventEntity;
+import io.roseiam.shared.UserPrincipal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,17 +11,18 @@ import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class AuditQueryService {
     private final AuditMapper mapper;
     private final AuditService audit;
-    private final JsonCodec json;
+    private final JsonMapper jsonMapper;
 
-    public AuditQueryService(AuditMapper mapper, AuditService audit, JsonCodec json) {
+    public AuditQueryService(AuditMapper mapper, AuditService audit, JsonMapper jsonMapper) {
         this.mapper = mapper;
         this.audit = audit;
-        this.json = json;
+        this.jsonMapper = jsonMapper;
     }
 
     @PreAuthorize("hasAuthority('audit-events:read')")
@@ -114,7 +113,13 @@ public class AuditQueryService {
         value.put("targetId", event.targetId);
         value.put("result", event.result);
         value.put("requestId", event.requestId);
-        value.put("metadata", event.safeMetadata == null ? null : json.readMap(event.safeMetadata));
+        value.put(
+                "metadata",
+                event.safeMetadata == null
+                        ? null
+                        : jsonMapper.readValue(
+                                event.safeMetadata,
+                                new tools.jackson.core.type.TypeReference<Map<String, Object>>() {}));
         return value;
     }
 }

@@ -1,14 +1,6 @@
-package io.roseiam.config;
+package io.roseiam.role;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import io.roseiam.persistence.entity.PermissionEntity;
-import io.roseiam.persistence.entity.RolePermissionEntity;
-import io.roseiam.persistence.entity.UserRoleEntity;
-import io.roseiam.persistence.mapper.PermissionMapper;
-import io.roseiam.persistence.mapper.RolePermissionMapper;
-import io.roseiam.persistence.mapper.UserRoleMapper;
-import io.roseiam.role.RoleEntity;
-import io.roseiam.role.RoleMapper;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.stereotype.Component;

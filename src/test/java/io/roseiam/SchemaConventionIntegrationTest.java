@@ -3,8 +3,8 @@ package io.roseiam;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import io.roseiam.persistence.entity.PermissionEntity;
-import io.roseiam.persistence.mapper.PermissionMapper;
+import io.roseiam.role.PermissionEntity;
+import io.roseiam.role.PermissionMapper;
 import io.roseiam.role.RoleMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
