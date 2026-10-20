@@ -24,19 +24,19 @@ public final class AuthDtos {
     public record PasswordRecoveryCompletion(
             @NotBlank String token, @NotBlank String password) {}
 
-    public record InvitationRequest(
+    public record UserCreateRequest(
             @NotBlank @Email @Size(max = 254) String email, Set<Long> roleIds) {}
 
-    public record InvitationResponse(Long id, Instant expiresAt) {}
+    public record UserCreateResponse(Long id, Instant expiresAt) {}
 
-    public record InvitationAcceptance(
+    public record UserAcceptInvitationRequest(
             @NotBlank String token,
             @NotBlank String password,
             @NotBlank @Size(max = 100) String name) {}
 
-    public record UserPatch(@NotBlank @Size(max = 100) String name) {}
+    public record UserRequest(@NotBlank @Size(max = 100) String name) {}
 
-    public record UserSummary(
+    public record UserResponse(
             Long id,
             String email,
             Instant emailVerifiedAt,
@@ -46,13 +46,13 @@ public final class AuthDtos {
             Instant createdAt,
             Instant updatedAt) {}
 
-    public record UserPage(List<UserSummary> items, int page, int size, long totalElements, int totalPages) {}
+    public record UserPageResponse(List<UserResponse> items, int page, int size, long totalElements, int totalPages) {}
 
-    public record MeResponse(Long id, String email, Instant emailVerifiedAt, String name, String status) {}
+    public record UserMeResponse(Long id, String email, Instant emailVerifiedAt, String name, String status) {}
 
     public record InvitationDelivery(String email, String token) {}
 
-    public record CreatedInvitation(InvitationResponse response, InvitationDelivery delivery) {}
+    public record CreatedInvitation(UserCreateResponse response, InvitationDelivery delivery) {}
 
     public record RecoveryDelivery(String email, String token) {}
 }

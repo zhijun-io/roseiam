@@ -30,10 +30,10 @@ class SchemaConventionIntegrationTest {
     @Test
     void flywayCreatesLongPrimaryKeysAndNoForeignKeyConstraints() {
         Integer userTableCount = jdbc.queryForObject(
-                "SELECT count(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'iam_users'",
+                "SELECT count(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'users'",
                 Integer.class);
         Integer primaryKeyTypeCount = jdbc.queryForObject(
-                "SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'iam_users' AND column_name = 'id' AND data_type = 'bigint' AND is_identity = 'YES'",
+                "SELECT count(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'id' AND data_type = 'bigint' AND is_identity = 'YES'",
                 Integer.class);
         Integer foreignKeyCount = jdbc.queryForObject(
                 "SELECT count(*) FROM information_schema.table_constraints WHERE constraint_schema = current_schema() AND constraint_type = 'FOREIGN KEY'",

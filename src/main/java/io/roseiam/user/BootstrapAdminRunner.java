@@ -16,13 +16,11 @@ import org.springframework.stereotype.Component;
 public class BootstrapAdminRunner implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(BootstrapAdminRunner.class);
     private final String email;
-    private final UserLifecycleService users;
+    private final UserService users;
     private final MailDeliveryService mail;
 
     public BootstrapAdminRunner(
-            @Value("${app.bootstrap.admin-email:}") String email,
-            UserLifecycleService users,
-            MailDeliveryService mail) {
+            @Value("${app.bootstrap.admin-email:}") String email, UserService users, MailDeliveryService mail) {
         this.email = email;
         this.users = users;
         this.mail = mail;

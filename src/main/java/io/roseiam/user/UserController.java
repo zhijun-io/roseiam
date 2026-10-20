@@ -22,19 +22,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class UserController {
     private static final Logger logger = LoggerFactory.getLogger(UserController.class);
-    private final UserLifecycleService users;
+    private final UserService users;
     private final UserSettingService settings;
     private final MailDeliveryService mail;
 
-    public UserController(UserLifecycleService users, UserSettingService settings, MailDeliveryService mail) {
+    public UserController(UserService users, UserSettingService settings, MailDeliveryService mail) {
         this.users = users;
         this.settings = settings;
         this.mail = mail;
     }
 
     @PostMapping("/user-invitations")
-    public ResponseEntity<AuthDtos.InvitationResponse> invite(
-            @Valid @RequestBody AuthDtos.InvitationRequest request, Authentication auth) {
+    public ResponseEntity<AuthDtos.UserCreateResponse> invite(
+            @Valid @RequestBody AuthDtos.UserCreateRequest request, Authentication auth) {
         var created = users.invite(request, principal(auth));
         try {
             mail.sendInvitation(created.delivery().email(), created.delivery().token());
@@ -49,13 +49,13 @@ public class UserController {
     }
 
     @PostMapping("/user-invitations/acceptance")
-    public ResponseEntity<Void> accept(@Valid @RequestBody AuthDtos.InvitationAcceptance request) {
+    public ResponseEntity<Void> accept(@Valid @RequestBody AuthDtos.UserAcceptInvitationRequest request) {
         users.accept(request);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/users")
-    public AuthDtos.UserPage list(
+    public AuthDtos.UserPageResponse list(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status) {
@@ -63,38 +63,38 @@ public class UserController {
     }
 
     @GetMapping("/users/{id}")
-    public AuthDtos.UserSummary get(@PathVariable long id) {
+    public AuthDtos.UserResponse get(@PathVariable long id) {
         return users.getUser(id);
     }
 
     @PatchMapping("/users/{id}")
-    public AuthDtos.UserSummary update(
-            @PathVariable long id, @Valid @RequestBody AuthDtos.UserPatch request, Authentication auth) {
+    public AuthDtos.UserResponse update(
+            @PathVariable long id, @Valid @RequestBody AuthDtos.UserRequest request, Authentication auth) {
         return users.updateName(id, request.name(), principal(auth));
     }
 
     @PostMapping("/users/{id}/disable")
-    public AuthDtos.UserSummary disable(@PathVariable long id, Authentication auth) {
+    public AuthDtos.UserResponse disable(@PathVariable long id, Authentication auth) {
         users.disable(id, principal(auth));
         return users.listOne(id);
     }
 
     @PostMapping("/users/{id}/enable")
-    public AuthDtos.UserSummary enable(@PathVariable long id, Authentication auth) {
+    public AuthDtos.UserResponse enable(@PathVariable long id, Authentication auth) {
         users.enable(id, principal(auth));
         return users.listOne(id);
     }
 
     @GetMapping("/me")
-    public AuthDtos.MeResponse me(Authentication auth) {
+    public AuthDtos.UserMeResponse me(Authentication auth) {
         var user = users.listOne(principal(auth).userId());
-        return new AuthDtos.MeResponse(user.id(), user.email(), user.emailVerifiedAt(), user.name(), user.status());
+        return new AuthDtos.UserMeResponse(user.id(), user.email(), user.emailVerifiedAt(), user.name(), user.status());
     }
 
     @PatchMapping("/me")
-    public AuthDtos.MeResponse updateMe(@Valid @RequestBody AuthDtos.UserPatch request, Authentication auth) {
+    public AuthDtos.UserMeResponse updateMe(@Valid @RequestBody AuthDtos.UserRequest request, Authentication auth) {
         var user = users.updateOwnName(principal(auth).userId(), request.name(), principal(auth));
-        return new AuthDtos.MeResponse(user.id(), user.email(), user.emailVerifiedAt(), user.name(), user.status());
+        return new AuthDtos.UserMeResponse(user.id(), user.email(), user.emailVerifiedAt(), user.name(), user.status());
     }
 
     @GetMapping("/me/settings")

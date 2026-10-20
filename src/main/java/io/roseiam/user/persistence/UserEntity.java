@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.Instant;
 
-@TableName("iam_users")
+@TableName("users")
 public class UserEntity {
     @TableId(type = IdType.AUTO)
     private Long id;

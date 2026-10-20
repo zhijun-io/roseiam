@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class UserLifecycleService {
+public class UserService {
     private final UserMapper users;
     private final RoleMapper roles;
     private final UserRoleMapper userRoles;
@@ -39,7 +39,7 @@ public class UserLifecycleService {
     private final AuditService audit;
     private final Clock clock;
 
-    public UserLifecycleService(
+    public UserService(
             UserMapper users,
             RoleMapper roles,
             UserRoleMapper userRoles,
@@ -62,7 +62,7 @@ public class UserLifecycleService {
 
     @PreAuthorize("hasAuthority('users:invite')")
     @Transactional
-    public AuthDtos.CreatedInvitation invite(AuthDtos.InvitationRequest request, UserPrincipal actor) {
+    public AuthDtos.CreatedInvitation invite(AuthDtos.UserCreateRequest request, UserPrincipal actor) {
         String email = request.email().trim().toLowerCase(java.util.Locale.ROOT);
         Instant now = clock.instant();
         UserEntity user = users.selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, email));
@@ -108,7 +108,7 @@ public class UserLifecycleService {
         invitations.insert(invitation);
         audit.record(actor.userId(), "user.invited", "User", user.getId().toString(), "SUCCESS", null);
         return new AuthDtos.CreatedInvitation(
-                new AuthDtos.InvitationResponse(invitation.id, invitation.expiresAt),
+                new AuthDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
                 new AuthDtos.InvitationDelivery(email, token));
     }
 
@@ -157,12 +157,12 @@ public class UserLifecycleService {
         invitations.insert(invitation);
         audit.record(null, "bootstrap.admin.invited", "User", user.getId().toString(), "SUCCESS", null);
         return new AuthDtos.CreatedInvitation(
-                new AuthDtos.InvitationResponse(invitation.id, invitation.expiresAt),
+                new AuthDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
                 new AuthDtos.InvitationDelivery(email, token));
     }
 
     @Transactional
-    public void accept(AuthDtos.InvitationAcceptance request) {
+    public void accept(AuthDtos.UserAcceptInvitationRequest request) {
         Instant now = clock.instant();
         UserInvitationEntity invitation = invitations.selectOne(new LambdaQueryWrapper<UserInvitationEntity>()
                 .eq(UserInvitationEntity::getTokenHash, tokens.hash(request.token()))
@@ -191,38 +191,38 @@ public class UserLifecycleService {
 
     @PreAuthorize("hasAuthority('users:read')")
     @Transactional(readOnly = true)
-    public AuthDtos.UserPage list(int page, int size, String status) {
+    public AuthDtos.UserPageResponse list(int page, int size, String status) {
         int p = Math.max(0, page), n = Math.min(100, Math.max(1, size));
         LambdaQueryWrapper<UserEntity> filter = new LambdaQueryWrapper<>();
         if (status != null && !status.isBlank())
             filter.eq(UserEntity::getStatus, status.trim().toUpperCase(java.util.Locale.ROOT));
         long total = users.selectCount(filter);
-        List<AuthDtos.UserSummary> items = users
+        List<AuthDtos.UserResponse> items = users
                 .selectList(filter.orderByAsc(UserEntity::getId).last("LIMIT " + n + " OFFSET " + (long) p * n))
                 .stream()
                 .map(this::summary)
                 .toList();
-        return new AuthDtos.UserPage(items, p, n, total, (int) Math.ceil((double) total / n));
+        return new AuthDtos.UserPageResponse(items, p, n, total, (int) Math.ceil((double) total / n));
     }
 
     @PreAuthorize("hasAuthority('users:read')")
     @Transactional(readOnly = true)
-    public AuthDtos.UserSummary getUser(long id) {
+    public AuthDtos.UserResponse getUser(long id) {
         return listOne(id);
     }
 
     @PreAuthorize("hasAuthority('users:write')")
     @Transactional
-    public AuthDtos.UserSummary updateName(long id, String name, UserPrincipal actor) {
+    public AuthDtos.UserResponse updateName(long id, String name, UserPrincipal actor) {
         return updateNameInternal(id, name, actor);
     }
 
     @Transactional
-    public AuthDtos.UserSummary updateOwnName(long id, String name, UserPrincipal actor) {
+    public AuthDtos.UserResponse updateOwnName(long id, String name, UserPrincipal actor) {
         return updateNameInternal(id, name, actor);
     }
 
-    private AuthDtos.UserSummary updateNameInternal(long id, String name, UserPrincipal actor) {
+    private AuthDtos.UserResponse updateNameInternal(long id, String name, UserPrincipal actor) {
         int n = users.update(
                 null,
                 new LambdaUpdateWrapper<UserEntity>()
@@ -277,13 +277,13 @@ public class UserLifecycleService {
         if (changed > 0) audit.record(actor.userId(), "user.enabled", "User", Long.toString(id), "SUCCESS", null);
     }
 
-    public AuthDtos.UserSummary listOne(long id) {
+    public AuthDtos.UserResponse listOne(long id) {
         UserEntity user = users.selectById(id);
         if (user == null) throw ApiException.notFound("User not found");
         return summary(user);
     }
 
-    private AuthDtos.UserSummary summary(UserEntity user) {
+    private AuthDtos.UserResponse summary(UserEntity user) {
         List<Long> roleIds = userRoles
                 .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getUserId, user.getId()))
                 .stream()
@@ -294,7 +294,7 @@ public class UserLifecycleService {
                 : roles.selectList(new LambdaQueryWrapper<RoleEntity>().in(RoleEntity::getId, roleIds)).stream()
                         .map(RoleEntity::getCode)
                         .toList();
-        return new AuthDtos.UserSummary(
+        return new AuthDtos.UserResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getEmailVerifiedAt(),

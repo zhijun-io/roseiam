@@ -10,7 +10,7 @@ import io.roseiam.config.JsonCodec;
 import io.roseiam.identity.AuthDtos;
 import io.roseiam.identity.IdentityService;
 import io.roseiam.persistence.entity.AuditEventEntity;
-import io.roseiam.user.UserLifecycleService;
+import io.roseiam.user.UserService;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +31,7 @@ class ApiAuthorizationIntegrationTest {
     private MockMvc mvc;
 
     @Autowired
-    private UserLifecycleService users;
+    private UserService users;
 
     @Autowired
     private IdentityService identity;
@@ -47,7 +47,8 @@ class ApiAuthorizationIntegrationTest {
         mvc.perform(get("/api/me")).andExpect(status().isUnauthorized());
 
         AuthDtos.CreatedInvitation invitation = users.createBootstrapInvitation("api-admin@example.test");
-        users.accept(new AuthDtos.InvitationAcceptance(invitation.delivery().token(), "test-pass", "API Admin"));
+        users.accept(
+                new AuthDtos.UserAcceptInvitationRequest(invitation.delivery().token(), "test-pass", "API Admin"));
         AuthDtos.LoginResponse login = identity.login(new AuthDtos.LoginRequest("api-admin@example.test", "test-pass"));
         String bearer = "Bearer " + login.accessToken();
 

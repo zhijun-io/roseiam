@@ -18,7 +18,7 @@ import io.roseiam.persistence.entity.UserSessionEntity;
 import io.roseiam.persistence.mapper.UserInvitationMapper;
 import io.roseiam.persistence.mapper.UserRoleMapper;
 import io.roseiam.platformsetting.PlatformSettingMapper;
-import io.roseiam.user.UserLifecycleService;
+import io.roseiam.user.UserService;
 import io.roseiam.user.UserSettingService;
 import io.roseiam.user.persistence.UserEntity;
 import io.roseiam.user.persistence.UserMapper;
@@ -64,7 +64,7 @@ class IdentityAndJsonbIntegrationTest {
     private JsonCodec json;
 
     @Autowired
-    private UserLifecycleService userLifecycle;
+    private UserService userLifecycle;
 
     @Autowired
     private UserInvitationMapper invitations;
