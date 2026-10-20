@@ -95,9 +95,8 @@ public class LoginAuthenticationHandlers implements AuthenticationSuccessHandler
                     "Authentication is temporarily unavailable",
                     request);
         } else {
-            Object email = request.getAttribute(LoginAuthenticationConverter.EMAIL_ATTRIBUTE);
             try {
-                identity.recordAuthenticationFailure(email instanceof String value ? value : null);
+                identity.recordAuthenticationFailure();
             } catch (RuntimeException auditException) {
                 logger.error("Could not record failed login", auditException);
             }

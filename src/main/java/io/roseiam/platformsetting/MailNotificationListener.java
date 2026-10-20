@@ -19,7 +19,7 @@ public class MailNotificationListener {
 
     @Async("mailTaskExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void sendInvitation(InvitationMailRequested event) {
+    public void sendInvitation(InvitationMailRequest event) {
         try {
             mail.sendInvitation(event.recipient(), event.token());
         } catch (RuntimeException exception) {

@@ -25,12 +25,7 @@ public class RolePermissionService {
     }
 
     public Set<String> permissions(Long userId) {
-        Set<Long> roleIds =
-                userRoles
-                        .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getUserId, userId))
-                        .stream()
-                        .map(row -> row.roleId)
-                        .collect(java.util.stream.Collectors.toSet());
+        Set<Long> roleIds = roleIds(userId);
         if (roleIds.isEmpty()) return Set.of();
         Set<Long> permissionIds = rolePermissions
                 .selectList(new LambdaQueryWrapper<RolePermissionEntity>().in(RolePermissionEntity::getRoleId, roleIds))
@@ -48,17 +43,20 @@ public class RolePermissionService {
     }
 
     public Set<String> roles(Long userId) {
-        Set<Long> roleIds =
-                userRoles
-                        .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getUserId, userId))
-                        .stream()
-                        .map(row -> row.roleId)
-                        .collect(java.util.stream.Collectors.toSet());
+        Set<Long> roleIds = roleIds(userId);
         return roleIds.isEmpty()
                 ? Set.of()
                 : new LinkedHashSet<>(
                         roles.selectList(new LambdaQueryWrapper<RoleEntity>().in(RoleEntity::getId, roleIds)).stream()
                                 .map(RoleEntity::getCode)
                                 .toList());
+    }
+
+    private Set<Long> roleIds(Long userId) {
+        return userRoles
+                .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getUserId, userId))
+                .stream()
+                .map(row -> row.roleId)
+                .collect(java.util.stream.Collectors.toSet());
     }
 }

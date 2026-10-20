@@ -16,9 +16,15 @@ public @interface Audited {
 
     boolean targetIdFromResult() default false;
 
-    int changedFieldsParameter() default -1;
+    int actionParameter() default -1;
 
-    String[] changedFields() default {};
+    String actionWhenTrue() default "";
 
-    int actorParameter() default -1;
+    String actionWhenFalse() default "";
+
+    boolean recordFailure() default false;
+
+    boolean recordOnlyWhenResultTrue() default false;
+
+    boolean recordOnlyWhenResultNotNull() default false;
 }

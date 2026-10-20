@@ -1,13 +1,12 @@
 package io.roseiam.platformsetting;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import io.roseiam.audit.AuditService;
+import io.roseiam.audit.Audited;
 import io.roseiam.config.ApiException;
 import io.roseiam.config.AppProperties;
 import io.roseiam.shared.UserPrincipal;
 import java.net.URI;
 import java.time.Clock;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +36,6 @@ public class PlatformSettingService {
 
     private final PlatformSettingMapper mapper;
     private final JsonMapper jsonMapper;
-    private final AuditService audit;
     private final Clock clock;
     private final String encryptionKey;
     private final String initialFrontendUrl;
@@ -47,13 +45,11 @@ public class PlatformSettingService {
     public PlatformSettingService(
             PlatformSettingMapper mapper,
             JsonMapper jsonMapper,
-            AuditService audit,
             Clock clock,
             AppProperties properties,
             MailProperties mailProperties) {
         this.mapper = mapper;
         this.jsonMapper = jsonMapper;
-        this.audit = audit;
         this.clock = clock;
         this.encryptionKey = properties.getSmtpEncryptionKey();
         this.initialFrontendUrl = properties.getFrontendBaseUrl();
@@ -88,12 +84,12 @@ public class PlatformSettingService {
 
     @PreAuthorize("hasAuthority('platform-settings:write')")
     @Transactional
+    @Audited(action = "platform.settings.updated", targetType = "PlatformSetting")
     public Map<String, Object> update(Map<String, Object> patch, UserPrincipal actor) {
         rejectUnknown(patch.keySet(), Set.of("general", "mail"));
         if (patch.isEmpty()) {
             throw ApiException.badRequest("At least one settings group is required");
         }
-        List<String> changedFields = new ArrayList<>();
         if (patch.containsKey("general")) {
             Map<String, Object> changes = asMap(patch.get("general"), "general");
             rejectUnknown(changes.keySet(), GENERAL_FIELDS);
@@ -101,9 +97,6 @@ public class PlatformSettingService {
             Map<String, Object> updated = new LinkedHashMap<>(current);
             changes.forEach((key, value) -> {
                 validateGeneral(key, value);
-                if (!java.util.Objects.equals(current.get(key), value)) {
-                    changedFields.add("general." + key);
-                }
                 updated.put(key, value);
             });
             write("general", updated);
@@ -131,22 +124,14 @@ public class PlatformSettingService {
                         throw ApiException.badRequest("SMTP password must be non-empty when supplied");
                     }
                     String encrypted = encrypt(password);
-                    if (!java.util.Objects.equals(updated.get("smtpPasswordEncrypted"), encrypted)) {
-                        changedFields.add("mail.smtpPassword");
-                    }
                     updated.put("smtpPasswordEncrypted", encrypted);
                     continue;
                 }
                 validateMail(key, value);
-                if (!java.util.Objects.equals(current.get(key), value)) {
-                    changedFields.add("mail." + key);
-                }
                 updated.put(key, value);
             }
             if (clearPassword) {
-                if (updated.containsKey("smtpPasswordEncrypted")) {
-                    changedFields.add("mail.smtpPassword");
-                }
+                if (updated.containsKey("smtpPasswordEncrypted")) {}
                 updated.remove("smtpPasswordEncrypted");
             }
             if (Boolean.TRUE.equals(updated.get("smtpAuthEnabled"))) {
@@ -158,15 +143,6 @@ public class PlatformSettingService {
                 }
             }
             write("mail", updated);
-        }
-        if (!changedFields.isEmpty()) {
-            audit.record(
-                    actor.userId(),
-                    "platform.settings.updated",
-                    "PlatformSetting",
-                    null,
-                    "SUCCESS",
-                    Map.of("changedFields", changedFields));
         }
         return getSettingsWithoutAuthorization();
     }
@@ -319,7 +295,6 @@ public class PlatformSettingService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> asMap(Object value, String group) {
         if (!(value instanceof Map<?, ?> map)) {
             throw ApiException.badRequest(group + " must be an object");

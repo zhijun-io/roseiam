@@ -1,9 +1,9 @@
 package io.roseiam.audit;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.roseiam.config.ApiException;
 import io.roseiam.shared.UserPrincipal;
 import java.time.Instant;
-import java.util.Map;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,15 +14,15 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/audit-events")
 public class AuditController {
-    private final AuditQueryService audit;
+    private final AuditService audit;
 
-    public AuditController(AuditQueryService audit) {
+    public AuditController(AuditService audit) {
         this.audit = audit;
     }
 
     @GetMapping
-    public Map<String, Object> page(
-            @RequestParam(defaultValue = "0") int page,
+    public Page<AuditDtos.AuditEventResponse> page(
+            @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) Long actorUserId,
             @RequestParam(required = false) String action,
@@ -37,7 +37,7 @@ public class AuditController {
     }
 
     @GetMapping("/{id}")
-    public Map<String, Object> get(@PathVariable long id, Authentication authentication) {
+    public AuditDtos.AuditEventResponse get(@PathVariable long id, Authentication authentication) {
         return audit.get(id, principal(authentication));
     }
 

@@ -83,7 +83,7 @@ flowchart LR
 |  | `action`, `targetType`, `targetId` | 字符串；`targetId` 可空 | 发生的操作及目标 |
 |  | `result` | `SUCCESS` / `FAILURE` | 操作结果 |
 |  | `requestId` | 字符串，非空 | 关联同一请求的日志与审计事件 |
-|  | `safeMetadata` | JSON，可空 | 仅白名单非秘密信息；禁止密码、令牌、SMTP 凭据 |
+|  | `safeMetadata` | JSON，可空 | 旧数据库兼容列；新事件不写入，API 不返回 |
 | `PlatformSetting` | `id` | Long，主键 | 单条配置记录标识 |
 |  | `type` | 字符串，非空、唯一；首批 `general`、`mail` | 指定 `value` JSON 的结构和字段白名单 |
 |  | `value` | JSON 对象，非空 | `general` 含 `platformName`、`defaultLocale`、`frontendBaseUrl`；`mail` 含 `smtpHost`、`smtpPort`、`smtpUsername`、`smtpFromAddress`、`smtpAuthEnabled`、`smtpStartTlsEnabled`、`smtpPasswordEncrypted` |
@@ -94,7 +94,7 @@ flowchart LR
 |  | `value` | JSON 对象，非空 | `preferences` 含 `locale`（默认 `zh-CN`）、`timeZone`（默认 `Asia/Shanghai`）、`theme`（默认 `system`；`system`/`light`/`dark`） |
 |  | `updatedAt` | Instant，非空 | 最近更新时间 |
 
-SMTP 配置由平台管理员通过平台设置接口维护。密码在 TLS 请求中提交后由服务端使用仅部署环境持有的加密密钥加密；读取响应只提供 `smtpPasswordConfigured` 布尔值。密码字段不得进入审计载荷、日志、错误响应或普通数据库备份的可读内容。建议设置变更事件只记录哪些字段发生变化，不记录其值。
+SMTP 配置由平台管理员通过平台设置接口维护。密码在 TLS 请求中提交后由服务端使用仅部署环境持有的加密密钥加密；读取响应只提供 `smtpPasswordConfigured` 布尔值。密码字段不得进入审计载荷、日志、错误响应或普通数据库备份的可读内容。设置变更事件不记录设置字段或设置值。
 
 15 分钟空闲超时和 8 小时绝对期限是本项目对管理平台安全与工作时长的折中默认值，不是法规合规声明。OWASP 建议服务端强制空闲与绝对超时，并列出低风险应用常见 15–30 分钟空闲范围及办公日应用 4–8 小时绝对期限。[OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
 
@@ -124,7 +124,7 @@ SMTP 配置由平台管理员通过平台设置接口维护。密码在 TLS 请�
 
 ### 审计与平台设置
 
-- 首批记录登录成功/失败、邀请/激活、重置请求/完成、用户资料与状态、角色/权限变更、平台设置变更和审计查询；不记录秘密、密码、完整邮箱验证/重置令牌。UserSetting 偏好变更不纳入首批审计。
+- 首批记录登录成功/失败、邀请/激活、重置请求/完成、用户资料与状态、角色/权限变更、平台设置变更和审计查询；事件不保存 metadata，也不记录秘密、密码、完整邮箱验证/重置令牌。UserSetting 偏好变更不纳入首批审计。
 - 审计记录不包含密码、会话 Cookie、令牌、完整秘密或可重放认证材料。
 - 审计记录只追加，保留 365 天，到期后自动清理；不提供手工修改或删除 API。
 - 成功登录创建 `UserSession`、关键业务状态变更及对应 `AuditEvent` 必须在同一数据库事务中提交；审计写入失败时该事务回滚，不留下会话或业务变更。范围包括邀请/激活、密码重置完成、用户资料/状态、角色/权限和平台设置变更。失败登录仍须记录审计事件；审计写入失败不改变认证拒绝结果，并产生运维错误。
@@ -164,7 +164,7 @@ SMTP 配置由平台管理员通过平台设置接口维护。密码在 TLS 请�
 | SMTP 加密密钥 | 通过部署 Secret 注入，不存入 PlatformSetting | 加密存储 SMTP 密码；生产环境必须配置 |
 | CORS origin | 部署提供的精确白名单，默认拒绝 | 允许独立前端调用 API；不从可编辑平台设置动态扩展 |
 | 初始平台管理员 | 一次性初始化流程指定邮箱并验证；无共享默认密码 | 初次启动并安全建立管理访问 |
-| 审计查询 | 查询动作记录操作者、时间和结果；不保存敏感搜索值 | 审计访问本身可追踪，不对该追踪事件重复审计 |
+| 审计查询 | 查询动作记录操作者、时间和结果；不保存筛选字段或筛选值 | 审计访问本身可追踪，不对该追踪事件重复审计 |
 
 首位 `PlatformAdmin` 由 `BootstrapAdminRunner` 在应用启动时根据 `bootstrap-admin-email` 配置创建为待验证邀请，并发布事务提交后的异步邮件事件；邮箱留空时 runner 不执行。用户验证邮箱并设置密码后激活。正常运行期间不得通过公开注册创建账户；已有活动平台管理员时启动不会覆盖用户、角色、凭据或设置。如果该配置邮箱已有待激活的管理员邀请，后续启动会撤销旧邀请并重新创建、发送新邀请。SMTP 投递失败不会阻止启动；进程在异步事件处理前退出可能导致邮件丢失。首次启动时以部署初始化配置种入 SMTP 和前端基础 URL：本地使用 `http://localhost:3000`、Mailpit `mailpit:1025`、`no-reply@roseiam.local`、无认证/无 TLS；其他环境由运维通过 Secret/环境变量提供初始 SMTP 连接参数。首次管理员激活后，平台设置成为邮件配置的管理入口和运行时数据源，管理员可在其中修改设置。启用 SMTP 密码认证时必须配置邮件密码加密密钥。
 

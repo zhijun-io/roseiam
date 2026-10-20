@@ -1,7 +1,6 @@
 package io.roseiam.role;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import io.roseiam.audit.AuditService;
 import io.roseiam.audit.Audited;
 import io.roseiam.config.ApiException;
 import io.roseiam.shared.UserPrincipal;
@@ -11,6 +10,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -23,7 +23,6 @@ public class RoleService {
     private final RolePermissionMapper rolePermissions;
     private final UserRoleMapper userRoles;
     private final UserDirectoryService users;
-    private final AuditService audit;
     private final Clock clock;
 
     public RoleService(
@@ -32,14 +31,12 @@ public class RoleService {
             RolePermissionMapper rolePermissions,
             UserRoleMapper userRoles,
             UserDirectoryService users,
-            AuditService audit,
             Clock clock) {
         this.roles = roles;
         this.permissions = permissions;
         this.rolePermissions = rolePermissions;
         this.userRoles = userRoles;
         this.users = users;
-        this.audit = audit;
         this.clock = clock;
     }
 
@@ -69,7 +66,7 @@ public class RoleService {
 
     @PreAuthorize("hasAuthority('roles:write')")
     @Transactional
-    @Audited(action = "role.created", targetType = "Role", targetIdFromResult = true, actorParameter = 3)
+    @Audited(action = "role.created", targetType = "Role", targetIdFromResult = true)
     public Map<String, Object> create(String name, String description, Set<Long> permissionIds, UserPrincipal actor) {
         String code = "Custom_" + name.trim().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", "_");
         if (roles.selectCount(new LambdaQueryWrapper<RoleEntity>()
@@ -77,13 +74,14 @@ public class RoleService {
                         .or()
                         .eq(RoleEntity::getCode, code))
                 > 0) throw ApiException.conflict("Role name already exists");
+        Instant now = clock.instant();
         RoleEntity role = new RoleEntity();
         role.setCode(code);
         role.setName(name);
         role.setDescription(description);
         role.setBuiltIn(false);
-        role.setCreatedAt(clock.instant());
-        role.setUpdatedAt(clock.instant());
+        role.setCreatedAt(now);
+        role.setUpdatedAt(now);
         roles.insert(role);
         replacePermissions(role.getId(), permissionIds);
         return details(role.getId());
@@ -91,37 +89,55 @@ public class RoleService {
 
     @PreAuthorize("hasAuthority('roles:write')")
     @Transactional
-    @Audited(
-            action = "role.updated",
-            targetType = "Role",
-            targetIdParameter = 0,
-            changedFieldsParameter = 1,
-            actorParameter = 2)
+    @Audited(action = "role.updated", targetType = "Role", targetIdParameter = 0)
     public Map<String, Object> update(long id, Map<String, Object> patch, UserPrincipal actor) {
         RoleEntity role = roles.selectById(id);
         if (role == null) throw ApiException.notFound("Role not found");
         if (Boolean.TRUE.equals(role.getBuiltIn())) throw ApiException.conflict("Built-in roles cannot be changed");
         if (!Set.of("name", "description", "permissionIds").containsAll(patch.keySet()))
             throw ApiException.badRequest("Unsupported role fields");
+        boolean roleFieldsChanged = false;
         if (patch.containsKey("name")) {
             if (!(patch.get("name") instanceof String name) || name.isBlank())
                 throw ApiException.badRequest("name must be non-empty");
-            role.setName(name);
+            if (!Objects.equals(role.getName(), name)) {
+                role.setName(name);
+                roleFieldsChanged = true;
+            }
         }
         if (patch.containsKey("description")) {
             if (patch.get("description") != null && !(patch.get("description") instanceof String))
                 throw ApiException.badRequest("description must be a string");
-            role.setDescription((String) patch.get("description"));
+            String description = (String) patch.get("description");
+            if (!Objects.equals(role.getDescription(), description)) {
+                role.setDescription(description);
+                roleFieldsChanged = true;
+            }
         }
-        role.setUpdatedAt(clock.instant());
-        roles.updateById(role);
-        if (patch.containsKey("permissionIds")) replacePermissions(id, ids(patch.get("permissionIds")));
+        Set<Long> requestedPermissionIds = null;
+        boolean permissionsChanged = false;
+        if (patch.containsKey("permissionIds")) {
+            Set<Long> requestedIds = ids(patch.get("permissionIds"));
+            requestedPermissionIds = requestedIds;
+            Set<Long> currentPermissionIds = rolePermissions
+                    .selectList(new LambdaQueryWrapper<RolePermissionEntity>().eq(RolePermissionEntity::getRoleId, id))
+                    .stream()
+                    .map(link -> link.permissionId)
+                    .collect(java.util.stream.Collectors.toSet());
+            permissionsChanged = !currentPermissionIds.equals(requestedIds);
+        }
+        if (!roleFieldsChanged && !permissionsChanged) return details(id);
+        if (roleFieldsChanged) {
+            role.setUpdatedAt(clock.instant());
+            roles.updateById(role);
+        }
+        if (permissionsChanged) replacePermissions(id, requestedPermissionIds);
         return details(id);
     }
 
     @PreAuthorize("hasAuthority('roles:write')")
     @Transactional
-    @Audited(action = "role.deleted", targetType = "Role", targetIdParameter = 0, actorParameter = 1)
+    @Audited(action = "role.deleted", targetType = "Role", targetIdParameter = 0)
     public void delete(long id, UserPrincipal actor) {
         RoleEntity role = roles.selectById(id);
         if (role == null) throw ApiException.notFound("Role not found");
@@ -134,6 +150,13 @@ public class RoleService {
 
     @PreAuthorize("hasAuthority('user-roles:write')")
     @Transactional
+    @Audited(
+            action = "user.role.assigned",
+            targetType = "User",
+            targetIdParameter = 0,
+            actionParameter = 3,
+            actionWhenTrue = "user.role.assigned",
+            actionWhenFalse = "user.role.revoked")
     public void assign(long user, long role, UserPrincipal actor, boolean add) {
         if (!users.exists(user)) throw ApiException.notFound("User not found");
         RoleEntity roleEntity = roles.selectById(role);
@@ -141,33 +164,32 @@ public class RoleService {
         LambdaQueryWrapper<UserRoleEntity> relation = new LambdaQueryWrapper<UserRoleEntity>()
                 .eq(UserRoleEntity::getUserId, user)
                 .eq(UserRoleEntity::getRoleId, role);
-        if (add) {
-            if (userRoles.selectCount(relation) == 0) {
-                UserRoleEntity link = new UserRoleEntity();
-                link.userId = user;
-                link.roleId = role;
-                link.assignedBy = actor.userId();
-                link.assignedAt = clock.instant();
-                userRoles.insert(link);
-            }
-        } else {
-            if ("PlatformAdmin".equals(roleEntity.getCode())) protectAdmin(user, roleEntity);
+        if ("PlatformAdmin".equals(roleEntity.getCode()) && !actor.roleCodes().contains("PlatformAdmin")) {
+            throw ApiException.forbidden();
+        }
+        boolean assigned = userRoles.selectCount(relation) > 0;
+        if (add && !assigned) {
+            UserRoleEntity link = new UserRoleEntity();
+            link.userId = user;
+            link.roleId = role;
+            link.assignedBy = actor.userId();
+            link.assignedAt = clock.instant();
+            userRoles.insert(link);
+        } else if (!add && assigned) {
+            if ("PlatformAdmin".equals(roleEntity.getCode())) protectAdmin(roleEntity);
             userRoles.delete(relation);
         }
-        audit.record(
-                actor.userId(),
-                add ? "user.role.assigned" : "user.role.revoked",
-                "User",
-                Long.toString(user),
-                "SUCCESS",
-                null);
     }
 
-    public void assignOnInvitation(long userId, Set<Long> requestedRoleIds, Long actorId) {
-        Set<Long> existingRoleIds = roles.selectExistingByIds(requestedRoleIds).stream()
-                .map(RoleEntity::getId)
-                .collect(java.util.stream.Collectors.toSet());
-        if (!existingRoleIds.containsAll(requestedRoleIds)) throw ApiException.badRequest("Unknown role");
+    @Transactional
+    @Audited(action = "user.role.assigned", targetType = "User", targetIdParameter = 0)
+    public void assignOnInvitation(long userId, Set<Long> requestedRoleIds, UserPrincipal actor) {
+        List<RoleEntity> requestedRoles = roles.selectExistingByIds(requestedRoleIds);
+        if (requestedRoles.size() != requestedRoleIds.size()) throw ApiException.badRequest("Unknown role");
+        if (requestedRoles.stream().anyMatch(role -> "PlatformAdmin".equals(role.getCode()))
+                && !actor.roleCodes().contains("PlatformAdmin")) {
+            throw ApiException.forbidden();
+        }
         Set<Long> assignedRoleIds = userRoles.selectByUserId(userId).stream()
                 .map(link -> link.roleId)
                 .collect(java.util.stream.Collectors.toSet());
@@ -177,7 +199,7 @@ public class RoleService {
             UserRoleEntity link = new UserRoleEntity();
             link.userId = userId;
             link.roleId = roleId;
-            link.assignedBy = actorId;
+            link.assignedBy = actor.userId();
             link.assignedAt = assignedAt;
             userRoles.insert(link);
         }
@@ -212,7 +234,7 @@ public class RoleService {
                         .eq(UserRoleEntity::getUserId, userId)
                         .eq(UserRoleEntity::getRoleId, admin.getId()))
                 > 0;
-        if (assigned) protectAdmin(userId, admin);
+        if (assigned) protectAdmin(admin);
     }
 
     public boolean activePlatformAdminExistsForBootstrap() {
@@ -233,6 +255,8 @@ public class RoleService {
                         > 0;
     }
 
+    @Transactional
+    @Audited(action = "user.role.assigned", targetType = "User", targetIdParameter = 0)
     public void assignBootstrapPlatformAdmin(long userId) {
         RoleEntity admin =
                 roles.selectOne(new LambdaQueryWrapper<RoleEntity>().eq(RoleEntity::getCode, "PlatformAdmin"));
@@ -291,7 +315,7 @@ public class RoleService {
         return v;
     }
 
-    private void protectAdmin(long user, RoleEntity admin) {
+    private void protectAdmin(RoleEntity admin) {
         RoleEntity locked = roles.selectOne(new LambdaQueryWrapper<RoleEntity>()
                 .eq(RoleEntity::getId, admin.getId())
                 .last("FOR UPDATE"));

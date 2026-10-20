@@ -3,13 +3,12 @@ package io.roseiam.user;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import io.roseiam.audit.AuditService;
 import io.roseiam.audit.Audited;
 import io.roseiam.config.ApiException;
 import io.roseiam.config.RequestContext;
 import io.roseiam.identity.TokenService;
 import io.roseiam.identity.UserSessionService;
-import io.roseiam.platformsetting.InvitationMailRequested;
+import io.roseiam.platformsetting.InvitationMailRequest;
 import io.roseiam.role.RoleService;
 import io.roseiam.shared.UserPrincipal;
 import java.time.Clock;
@@ -32,7 +31,6 @@ public class UserService {
     private final UserSessionService sessions;
     private final TokenService tokens;
     private final PasswordEncoder passwords;
-    private final AuditService audit;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
@@ -43,7 +41,6 @@ public class UserService {
             UserSessionService sessions,
             TokenService tokens,
             PasswordEncoder passwords,
-            AuditService audit,
             ApplicationEventPublisher events,
             Clock clock) {
         this.users = users;
@@ -52,90 +49,47 @@ public class UserService {
         this.sessions = sessions;
         this.tokens = tokens;
         this.passwords = passwords;
-        this.audit = audit;
         this.events = events;
         this.clock = clock;
     }
 
     @PreAuthorize("hasAuthority('users:invite')")
     @Transactional
+    @Audited(action = "user.invited", targetType = "User")
     public UserDtos.CreatedInvitation invite(UserDtos.UserCreateRequest request, UserPrincipal actor) {
         String email = request.email().trim().toLowerCase(java.util.Locale.ROOT);
         Instant now = clock.instant();
         UserEntity user = users.selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, email));
         if (user != null) {
             if (!"INVITED".equals(user.getStatus())) throw ApiException.conflict("User already exists");
-            invitations.update(
-                    null,
-                    new LambdaUpdateWrapper<UserInvitationEntity>()
-                            .eq(UserInvitationEntity::getUserId, user.getId())
-                            .isNull(UserInvitationEntity::getUsedAt)
-                            .isNull(UserInvitationEntity::getRevokedAt)
-                            .set(UserInvitationEntity::getRevokedAt, now));
+            revokePendingInvitations(user.getId(), now);
         } else {
-            user = new UserEntity();
-            user.setEmail(email);
-            user.setStatus("INVITED");
-            user.setCreatedAt(now);
-            user.setUpdatedAt(now);
-            users.insert(user);
+            user = createInvitedUser(email, now);
         }
         Set<Long> requestedRoleIds = request.roleIds() == null ? Set.of() : request.roleIds();
-        roles.assignOnInvitation(user.getId(), requestedRoleIds, actor.userId());
-        String token = tokens.create();
-        UserInvitationEntity invitation = new UserInvitationEntity();
-        invitation.userId = user.getId();
-        invitation.tokenHash = tokens.hash(token);
-        invitation.expiresAt = now.plus(Duration.ofHours(72));
-        invitation.createdBy = actor.userId();
-        invitation.createdAt = now;
-        invitations.insert(invitation);
-        audit.record(actor.userId(), "user.invited", "User", user.getId().toString(), "SUCCESS", null);
-        events.publishEvent(new InvitationMailRequested(email, token, RequestContext.requestId()));
-        return new UserDtos.CreatedInvitation(
-                new UserDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
-                new UserDtos.InvitationDelivery(email, token));
+        roles.assignOnInvitation(user.getId(), requestedRoleIds, actor);
+        return createInvitation(user.getId(), email, actor.userId(), now);
     }
 
     @Transactional
+    @Audited(action = "bootstrap.admin.invited", targetType = "User", recordOnlyWhenResultNotNull = true)
     public UserDtos.CreatedInvitation createBootstrapInvitation(String rawEmail) {
         if (roles.activePlatformAdminExistsForBootstrap()) return null;
         String email = rawEmail.trim().toLowerCase(java.util.Locale.ROOT);
         Instant now = clock.instant();
         UserEntity user = users.selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, email));
         if (user == null) {
-            user = new UserEntity();
-            user.setEmail(email);
-            user.setStatus("INVITED");
-            user.setCreatedAt(now);
-            user.setUpdatedAt(now);
-            users.insert(user);
+            user = createInvitedUser(email, now);
             roles.assignBootstrapPlatformAdmin(user.getId());
         } else if (!"INVITED".equals(user.getStatus()) || !roles.hasPlatformAdminRole(user.getId())) {
             throw ApiException.conflict("Bootstrap email already belongs to an account");
         }
-        invitations.update(
-                null,
-                new LambdaUpdateWrapper<UserInvitationEntity>()
-                        .eq(UserInvitationEntity::getUserId, user.getId())
-                        .isNull(UserInvitationEntity::getUsedAt)
-                        .isNull(UserInvitationEntity::getRevokedAt)
-                        .set(UserInvitationEntity::getRevokedAt, now));
-        String token = tokens.create();
-        UserInvitationEntity invitation = new UserInvitationEntity();
-        invitation.userId = user.getId();
-        invitation.tokenHash = tokens.hash(token);
-        invitation.expiresAt = now.plus(Duration.ofHours(72));
-        invitation.createdAt = now;
-        invitations.insert(invitation);
-        audit.record(null, "bootstrap.admin.invited", "User", user.getId().toString(), "SUCCESS", null);
-        events.publishEvent(new InvitationMailRequested(email, token, RequestContext.requestId()));
-        return new UserDtos.CreatedInvitation(
-                new UserDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
-                new UserDtos.InvitationDelivery(email, token));
+        revokePendingInvitations(user.getId(), now);
+        return createInvitation(user.getId(), email, null, now);
     }
 
     @Transactional
+    @Audited(action = "user.invitation.accepted", targetType = "User")
     public void accept(UserDtos.UserAcceptInvitationRequest request) {
         Instant now = clock.instant();
         UserInvitationEntity invitation = invitations.selectOne(new LambdaQueryWrapper<UserInvitationEntity>()
@@ -159,8 +113,6 @@ public class UserService {
         if (changed == 0) throw ApiException.conflict("Invitation is no longer valid");
         invitation.usedAt = now;
         invitations.updateById(invitation);
-        audit.record(
-                invitation.userId, "user.invitation.accepted", "User", invitation.userId.toString(), "SUCCESS", null);
     }
 
     @PreAuthorize("hasAuthority('users:read')")
@@ -170,10 +122,9 @@ public class UserService {
         LambdaQueryWrapper<UserEntity> filter = new LambdaQueryWrapper<>();
         if (status != null && !status.isBlank())
             filter.eq(UserEntity::getStatus, status.trim().toUpperCase(java.util.Locale.ROOT));
-        long total = users.selectCount(filter);
         Page<UserEntity> result = users.selectPage(new Page<>((long) p + 1, n), filter.orderByAsc(UserEntity::getId));
         List<UserDtos.UserResponse> items = summaries(result.getRecords());
-        return new UserDtos.UserPageResponse(items, p, n, total, (int) Math.ceil((double) total / n));
+        return new UserDtos.UserPageResponse(items, p, n, result.getTotal(), (int) result.getPages());
     }
 
     @PreAuthorize("hasAuthority('users:read')")
@@ -184,43 +135,40 @@ public class UserService {
 
     @PreAuthorize("hasAuthority('users:write')")
     @Transactional
-    @Audited(
-            action = "user.updated",
-            targetType = "User",
-            targetIdParameter = 0,
-            changedFields = {"name"},
-            actorParameter = 2)
+    @Audited(action = "user.updated", targetType = "User", targetIdParameter = 0)
     public UserDtos.UserResponse updateName(long id, String name, UserPrincipal actor) {
-        return updateNameInternal(id, name, actor);
+        return updateNameInternal(id, name);
     }
 
     @Transactional
-    @Audited(
-            action = "user.updated",
-            targetType = "User",
-            targetIdParameter = 0,
-            changedFields = {"name"},
-            actorParameter = 2)
+    @Audited(action = "user.updated", targetType = "User", targetIdParameter = 0)
     public UserDtos.UserResponse updateOwnName(long id, String name, UserPrincipal actor) {
-        return updateNameInternal(id, name, actor);
+        return updateNameInternal(id, name);
     }
 
-    private UserDtos.UserResponse updateNameInternal(long id, String name, UserPrincipal actor) {
+    private UserDtos.UserResponse updateNameInternal(long id, String name) {
+        UserEntity user = users.selectById(id);
+        if (user == null) throw ApiException.notFound("User not found");
+        if (java.util.Objects.equals(user.getName(), name)) return summary(user);
+        Instant updatedAt = clock.instant();
         int n = users.update(
                 null,
                 new LambdaUpdateWrapper<UserEntity>()
                         .eq(UserEntity::getId, id)
                         .set(UserEntity::getName, name)
-                        .set(UserEntity::getUpdatedAt, clock.instant()));
+                        .set(UserEntity::getUpdatedAt, updatedAt));
         if (n == 0) throw ApiException.notFound("User not found");
-        return listOne(id);
+        user.setName(name);
+        user.setUpdatedAt(updatedAt);
+        return summary(user);
     }
 
     @PreAuthorize("hasAuthority('users:disable')")
     @Transactional
-    public void disable(long id, UserPrincipal actor) {
+    @Audited(action = "user.disabled", targetType = "User", targetIdParameter = 0, recordOnlyWhenResultTrue = true)
+    public boolean disable(long id, UserPrincipal actor) {
         if (users.selectById(id) == null) throw ApiException.notFound("User not found");
-        protectLastAdmin(id);
+        roles.ensureNotLastPlatformAdmin(id);
         int changed = users.update(
                 null,
                 new LambdaUpdateWrapper<UserEntity>()
@@ -230,13 +178,14 @@ public class UserService {
                         .set(UserEntity::getUpdatedAt, clock.instant()));
         if (changed > 0) {
             sessions.revokeAllForUser(id, clock.instant());
-            audit.record(actor.userId(), "user.disabled", "User", Long.toString(id), "SUCCESS", null);
         }
+        return changed > 0;
     }
 
     @PreAuthorize("hasAuthority('users:enable')")
     @Transactional
-    public void enable(long id, UserPrincipal actor) {
+    @Audited(action = "user.enabled", targetType = "User", targetIdParameter = 0, recordOnlyWhenResultTrue = true)
+    public boolean enable(long id, UserPrincipal actor) {
         int changed = users.update(
                 null,
                 new LambdaUpdateWrapper<UserEntity>()
@@ -245,13 +194,48 @@ public class UserService {
                         .set(UserEntity::getStatus, "ACTIVE")
                         .set(UserEntity::getUpdatedAt, clock.instant()));
         if (changed == 0 && users.selectById(id) == null) throw ApiException.notFound("User not found");
-        if (changed > 0) audit.record(actor.userId(), "user.enabled", "User", Long.toString(id), "SUCCESS", null);
+        return changed > 0;
     }
 
     public UserDtos.UserResponse listOne(long id) {
         UserEntity user = users.selectById(id);
         if (user == null) throw ApiException.notFound("User not found");
         return summary(user);
+    }
+
+    private UserDtos.CreatedInvitation createInvitation(long userId, String email, Long createdBy, Instant now) {
+        String token = tokens.create();
+        UserInvitationEntity invitation = new UserInvitationEntity();
+        invitation.userId = userId;
+        invitation.tokenHash = tokens.hash(token);
+        invitation.expiresAt = now.plus(Duration.ofHours(72));
+        invitation.createdBy = createdBy;
+        invitation.createdAt = now;
+        invitations.insert(invitation);
+        events.publishEvent(new InvitationMailRequest(email, token, RequestContext.requestId()));
+        return new UserDtos.CreatedInvitation(
+                new UserDtos.UserCreateResponse(invitation.id, invitation.expiresAt),
+                new UserDtos.InvitationDelivery(email, token));
+    }
+
+    private UserEntity createInvitedUser(String email, Instant now) {
+        UserEntity user = new UserEntity();
+        user.setEmail(email);
+        user.setStatus("INVITED");
+        user.setCreatedAt(now);
+        user.setUpdatedAt(now);
+        users.insert(user);
+        return user;
+    }
+
+    private void revokePendingInvitations(long userId, Instant now) {
+        invitations.update(
+                null,
+                new LambdaUpdateWrapper<UserInvitationEntity>()
+                        .eq(UserInvitationEntity::getUserId, userId)
+                        .isNull(UserInvitationEntity::getUsedAt)
+                        .isNull(UserInvitationEntity::getRevokedAt)
+                        .set(UserInvitationEntity::getRevokedAt, now));
     }
 
     private UserDtos.UserResponse summary(UserEntity user) {
@@ -277,9 +261,5 @@ public class UserService {
                 roleCodes,
                 user.getCreatedAt(),
                 user.getUpdatedAt());
-    }
-
-    private void protectLastAdmin(long id) {
-        roles.ensureNotLastPlatformAdmin(id);
     }
 }

@@ -17,9 +17,9 @@
 
 - **依赖：** IAM-OPS-01 Slice 1。
 
-- **测试或证明：** 为事件字段、白名单 metadata、秘密过滤、只追加、关键变更同事务、失败登录审计故障和 UserSetting 不审计编写持久化/集成测试；实现共享 AuditEvent 服务及 repository。
+- **测试或证明：** 为事件字段、无 metadata、只追加、关键变更同事务、失败登录审计故障和 UserSetting 不审计编写持久化/集成测试；实现共享 AuditEvent 服务及 repository。
 
-- **实现概要：** 实现 audit 单数包、Long 主键和版本化迁移；`RoleService` 创建/更新/删除（包括权限集合更新）及 `UserService` 本人/管理员姓名更新通过 `@Audited` AOP 在业务事务中记录成功事件。邀请/激活、认证/重置、角色分配/撤销、账号状态、平台设置和查询审计仍通过 `AuditService.record(...)` 显式保存；失败登录使用独立事务记录。审计写入要求参与已存在的业务事务，不提供修改/删除 API。
+- **实现概要：** 实现 audit 单数包、Long 主键和版本化迁移；所有事件由方法级 `@Audited` 描述并由 AOP 统一写入，不使用 Service 内的审计上下文或事件载体，不保存 metadata。成功事件参与业务事务；失败登录使用独立事务记录。审计不提供修改/删除 API。
 
 - **验证命令：** `./mvnw verify`。
 
@@ -35,7 +35,7 @@
 
 - **测试或证明：** 为查询权限、过滤/排序白名单、分页、单条 404、查询本身留痕且不递归编写 API 集成测试；实现查询 DTO、repository filter 和事件记录。
 
-- **实现概要：** 实现审计列表和详情 API；仅暴露允许字段，查询事件只存过滤字段名而不存过滤值；依赖当前 session + audit-events:read。
+- **实现概要：** 实现审计列表和详情 API；查询事件不保存筛选字段、筛选值或 metadata；依赖当前 session + audit-events:read。
 
 - **验证命令：** `./mvnw verify`。
 
@@ -76,7 +76,7 @@
 
 | 日期 | Slice | 验证命令和结果 | 偏差 |
 | --- | --- | --- | --- |
-| 2026-10-20 | Slice 1–3 | `ApiAuthorizationIntegrationTest` 验证审计查询留痕、筛选字段脱敏、`@Audited` 成功路径恰好记录一次及业务回滚时审计和业务更新一同回滚；`IdentityAndJsonbIntegrationTest` 覆盖认证事件；容器启动运行 Flyway schema；`mise exec -- ./mvnw verify` | 历史验证通过；本轮 `./mvnw -q test` 通过；审计持久化故障及 365 天清理边界未自动化覆盖 |
+| 2026-10-20 | Slice 1–3 | 历史运行过 `mise exec -- ./mvnw verify`，覆盖审计查询和业务事务行为 | 本轮去除 metadata 后仅执行 `./mvnw -q -DskipTests compile`、Spotless 与 `git diff --check`；未运行测试 |
 
 
 ### 修订历史

@@ -1,10 +1,8 @@
 package io.roseiam.audit;
 
 import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import io.roseiam.shared.JsonbStringTypeHandler;
 import java.time.Instant;
 
 @TableName(value = "audit_events", autoResultMap = true)
@@ -19,9 +17,6 @@ public class AuditEventEntity {
     public String targetId;
     public String result;
     public String requestId;
-
-    @TableField(value = "safe_metadata", typeHandler = JsonbStringTypeHandler.class)
-    public String safeMetadata;
 
     public Long getId() {
         return id;
@@ -85,13 +80,5 @@ public class AuditEventEntity {
 
     public void setRequestId(String value) {
         this.requestId = value;
-    }
-
-    public String getSafeMetadata() {
-        return safeMetadata;
-    }
-
-    public void setSafeMetadata(String value) {
-        this.safeMetadata = value;
     }
 }
