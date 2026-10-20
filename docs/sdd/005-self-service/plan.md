@@ -23,7 +23,7 @@
 
 - **验证命令：** `./mvnw test && ./mvnw verify`。
 
-- **完成：** false
+- **完成：** true
 
 ## Slice 2：读取和完整替换个人偏好
 
@@ -39,7 +39,7 @@
 
 - **验证命令：** `./mvnw verify`。
 
-- **完成：** false
+- **完成：** true
 
 ## 附录
 
@@ -60,8 +60,7 @@
 
 | 日期 | Slice | 验证命令和结果 | 偏差 |
 | --- | --- | --- | --- |
-
-| — | — | 尚未开始实现 | — |
+| 2026-10-20 | Slice 1–2 | `IdentityAndJsonbIntegrationTest` 验证 preferences JSONB 存取；`ApiAuthorizationIntegrationTest` 验证当前会话资料读写；`mise exec -- ./mvnw verify` | 通过；设置字段异常值与所有权隔离尚无逐项 API 测试 |
 
 
 ### 修订历史
@@ -69,5 +68,4 @@
 
 | 日期 | 原因和涉及切片 | 审批 |
 | --- | --- | --- |
-
 | 2026-10-20 | 初始实施计划；覆盖本 Spec 全部 AC | 用户批准；可进入 `sdd-build` |

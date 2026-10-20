@@ -23,7 +23,7 @@
 
 - **验证命令：** `./mvnw verify`。
 
-- **完成：** false
+- **完成：** true
 
 ## Slice 2：使用最新设置发送邀请与密码重置邮件
 
@@ -39,7 +39,7 @@
 
 - **验证命令：** `./mvnw verify；docker compose up --wait`。
 
-- **完成：** false
+- **完成：** true
 
 ## 附录
 
@@ -60,8 +60,7 @@
 
 | 日期 | Slice | 验证命令和结果 | 偏差 |
 | --- | --- | --- | --- |
-
-| — | — | 尚未开始实现 | — |
+| 2026-10-20 | Slice 1–2 | `IdentityAndJsonbIntegrationTest` 验证 PlatformSetting JSONB Mapper 读写；Mailpit 冒烟验证 SMTP 发信；Compose full 配置及镜像启动通过 | 通过；SMTP 密码加密轮换和设置变更后投递配置尚无自动化覆盖 |
 
 
 ### 修订历史
@@ -69,5 +68,4 @@
 
 | 日期 | 原因和涉及切片 | 审批 |
 | --- | --- | --- |
-
 | 2026-10-20 | 初始实施计划；覆盖本 Spec 全部 AC | 用户批准；可进入 `sdd-build` |

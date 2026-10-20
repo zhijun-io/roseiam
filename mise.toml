@@ -1,0 +1,38 @@
+[tools]
+java = "temurin-25"
+
+[tasks.test]
+description = "Run the test suite"
+run = "./mvnw test"
+run_windows = "mvnw.cmd test"
+
+[tasks.verify]
+description = "Run verification and package checks"
+run = "./mvnw verify"
+run_windows = "mvnw.cmd verify"
+
+[tasks.format]
+description = "Apply Java formatting"
+run = "./mvnw spotless:apply"
+run_windows = "mvnw.cmd spotless:apply"
+
+[tasks.run]
+description = "Run the application"
+run = "./mvnw spring-boot:run"
+run_windows = "mvnw.cmd spring-boot:run"
+
+[tasks."compose:up"]
+description = "Start local PostgreSQL"
+run = "docker compose up -d postgres"
+
+[tasks."compose:stop"]
+description = "Stop local services and keep their data"
+run = "docker compose stop"
+
+[tasks."docker:up"]
+description = "Build and start the Docker Compose application"
+run = "docker compose -f compose.full.yaml up -d --build"
+
+[tasks."docker:down"]
+description = "Stop the Docker Compose application and keep its data"
+run = "docker compose -f compose.full.yaml down"

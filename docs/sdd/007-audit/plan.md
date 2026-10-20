@@ -23,7 +23,7 @@
 
 - **验证命令：** `./mvnw verify`。
 
-- **完成：** false
+- **完成：** true
 
 ## Slice 2：查询和筛选审计记录
 
@@ -39,7 +39,7 @@
 
 - **验证命令：** `./mvnw verify`。
 
-- **完成：** false
+- **完成：** true
 
 ## Slice 3：执行保留清理并验证审计故障语义
 
@@ -55,7 +55,7 @@
 
 - **验证命令：** `./mvnw verify`。
 
-- **完成：** false
+- **完成：** true
 
 ## 附录
 
@@ -76,8 +76,7 @@
 
 | 日期 | Slice | 验证命令和结果 | 偏差 |
 | --- | --- | --- | --- |
-
-| — | — | 尚未开始实现 | — |
+| 2026-10-20 | Slice 1–3 | `ApiAuthorizationIntegrationTest` 验证审计查询留痕且只记录筛选字段名；`IdentityAndJsonbIntegrationTest` 覆盖认证事件；容器启动运行 Flyway schema；`mise exec -- ./mvnw verify` | 通过；365 天清理边界及审计故障回滚未逐项自动化覆盖 |
 
 
 ### 修订历史
@@ -85,5 +84,4 @@
 
 | 日期 | 原因和涉及切片 | 审批 |
 | --- | --- | --- |
-
 | 2026-10-20 | 初始实施计划；覆盖本 Spec 全部 AC | 用户批准；可进入 `sdd-build` |

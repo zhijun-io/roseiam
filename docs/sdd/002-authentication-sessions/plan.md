@@ -23,7 +23,7 @@
 
 - **验证命令：** `./mvnw test && ./mvnw verify`。
 
-- **完成：** false
+- **完成：** true
 
 ## Slice 2：受保护请求校验会话并登出
 
@@ -39,7 +39,7 @@
 
 - **验证命令：** `./mvnw test`。
 
-- **完成：** false
+- **完成：** true
 
 ## Slice 3：安全请求并完成密码恢复
 
@@ -55,7 +55,7 @@
 
 - **验证命令：** `./mvnw verify`。
 
-- **完成：** false
+- **完成：** true
 
 ## 附录
 
@@ -76,8 +76,7 @@
 
 | 日期 | Slice | 验证命令和结果 | 偏差 |
 | --- | --- | --- | --- |
-
-| — | — | 尚未开始实现 | — |
+| 2026-10-20 | Slice 1–3 | `IdentityAndJsonbIntegrationTest` 覆盖成功/错误密码、session 持久化与登出；`ApiAuthorizationIntegrationTest` 覆盖受保护 API；Mailpit 容器冒烟覆盖邀请接受/登录/登出链路；`mise exec -- ./mvnw verify` | 通过；密码恢复并发、会话过期边界与审计存储故障未逐项自动化覆盖 |
 
 
 ### 修订历史
@@ -85,5 +84,4 @@
 
 | 日期 | 原因和涉及切片 | 审批 |
 | --- | --- | --- |
-
 | 2026-10-20 | 初始实施计划；覆盖本 Spec 全部 AC | 用户批准；可进入 `sdd-build` |
