@@ -1,12 +1,12 @@
 # IAM 领域设计
 
-- **状态：** Draft proposal（对应 PRD 1.1 Draft；设计关卡 Exploratory）
-- **版本：** 0.5
+- **状态：** Accepted domain contract（对应 PRD 1.1 Approved；设计关卡 Ready）
+- **版本：** 0.6
 - **日期：** 2026-10-20
-- **适用范围：** PRD 1.1 Draft B1：员工身份、登录恢复、RBAC、个人资料与用户设置、平台设置、审计；产品范围待重新审批。
+- **适用范围：** PRD 1.1 Approved B1：员工身份、登录恢复、RBAC、个人资料与用户设置、平台设置、审计。
 - **来源：** [IAM 管理平台 PRD](../prd/iam-management-platform.md) 与 `spring-boot-developer` 技能工作流。
 
-本文定义产品领域概念和规则，不定义数据库表结构或 Java 实体。当前规则是设计提案；只有在产品/契约负责人确认后才成为接受的领域契约。
+本文定义产品领域概念和规则，不定义数据库表结构或 Java 实体。领域规则由用户批准的 PRD 1.1 B1 范围和本轮默认决策确认；字段、生命周期、权限与关联规则为规格拆分的接受领域契约。
 
 ## 核心模型
 
@@ -176,6 +176,7 @@ SMTP 配置由平台管理员通过平台设置接口维护。密码在 TLS 请�
 | 0.3 | 2026-10-20 | 明确全部领域字段，邮件与前端链接改由平台设置管理 | PRD 1.1 待审批 |
 | 0.4 | 2026-10-20 | PlatformSetting 和 UserSetting 改为 type + JSON value 字段模型 | PRD 1.1 待审批 |
 | 0.5 | 2026-10-20 | 移除支持联系邮箱；明确邀请时创建 Invited User，并补齐审计范围与失败行为 | PRD 1.1 待审批 |
+| 0.6 | 2026-10-20 | 用户批准 PRD 1.1 默认决策；确认领域契约并完成 B1 设计就绪评估 | Ready |
 
 ## Spring Boot 技术方案
 
@@ -225,27 +226,29 @@ HTTP 控制器只负责请求绑定和响应映射；业务规则放在用例边
 
 ## 设计就绪评估
 
-**PRD 状态：** Draft 1.1。**评估范围：** 拟修订 B1，FR-1–FR-8、NFR-1–NFR-5。当前没有既有领域/API 契约；以下覆盖均为提案，不满足设计就绪门槛。
+**PRD 状态：** Approved 1.1。**评估范围：** B1，FR-1–FR-8、NFR-1–NFR-5。领域模型字段、关系、生命周期、权限边界、API 操作、认证与邮件集成均已记录；部署期来源列表和生产服务等级明确延后，不阻塞已批准的本地可运行范围。
 
 | PRD 需求 | 领域契约 | API 契约 | 缺口 / 决策 |
 | --- | --- | --- | --- |
-| FR-1 登录与密码恢复 | Exploratory | Exploratory | 邮箱/密码、邮箱验证、邮件恢复及不透明 UserSession 已提案。 |
-| FR-2 员工账号生命周期 | Exploratory | Exploratory | 邮件邀请、激活、停用和重新启用已提案。 |
-| FR-3 角色与权限配置 | Exploratory | Exploratory | UserRole、RolePermission 多对多和内置角色已提案。 |
-| FR-4 按 RBAC 授权 | Exploratory | Exploratory | 权限并集、默认拒绝、无显式拒绝已提案。 |
-| FR-5 个人资料和用户设置 | Exploratory | Exploratory | 个人资料与语言/时区/主题设置已提案；邮箱不在首版自助变更。 |
-| FR-6 基础系统设置 | Exploratory | Exploratory | 展示设置、前端基础 URL、SMTP 字段及 SMTP 密码只写/加密存储已提案。 |
-| FR-7 审计记录与查询 | Exploratory | Exploratory | 事件集、365 天保留及关键事务行为已提案。 |
-| FR-8 停用后撤销访问 | Exploratory | Exploratory | 后续请求即时生效，所有 UserSession 撤销已提案。 |
-| NFR-1 服务端认证与授权 | Exploratory | Exploratory | Spring Security + 不透明 Bearer UserSession 已提案。 |
-| NFR-2 停用后会话终止 | Exploratory | Exploratory | 每个受保护请求检查 UserSession、User 状态与当前权限已提案。 |
-| NFR-3 审计隐私 | Exploratory | Exploratory | 不记录秘密；自动保留和清理已提案。 |
-| NFR-4 可部署和初始化 | Exploratory | No API impact | Docker 化后端与 Docker Compose 本地依赖候选方案；生产部署目标待定。 |
-| NFR-5 独立后端 API 与 CORS | Exploratory | Exploratory | JSON REST API、精确来源白名单已提案；具体 origin 由部署提供。 |
+| PRD 需求 | 领域契约 | API 契约 | Canonical 契约 / 结论 |
+| --- | --- | --- | --- |
+| FR-1 登录与密码恢复 | Covered by accepted contract | Covered by accepted contract | [认证模型与生命周期](#核心模型)、[账号规则](#账号和凭据)、[认证 API](../api.md#身份与会话)；包括邮箱验证、恢复令牌与 UserSession。 |
+| FR-2 员工账号生命周期 | Covered by accepted contract | Covered by accepted contract | [User/UserInvitation 及状态转换](#状态转换)、[用户 API](../api.md#用户与个人资料)。 |
+| FR-3 角色与权限配置 | Covered by accepted contract | Covered by accepted contract | [UserRole/RolePermission 多对多](#关系)、[权限边界](#权限边界)、[RBAC API](../api.md#角色与权限)。 |
+| FR-4 按 RBAC 授权 | Covered by accepted contract | Covered by accepted contract | [RBAC 规则](#rbac)及 API 通用授权约定；权限并集、默认拒绝和无显式拒绝。 |
+| FR-5 个人资料和用户设置 | Covered by accepted contract | Covered by accepted contract | [User/UserSetting 字段](#字段清单建议基线)、[个人 API](../api.md#用户与个人资料)；默认值和所有权边界明确。 |
+| FR-6 基础系统设置 | Covered by accepted contract | Covered by accepted contract | [PlatformSetting 字段与规则](#字段清单建议基线)、[设置 API](../api.md#平台设置)；`general`/`mail` 类型和秘密处理已定义。 |
+| FR-7 审计记录与查询 | Covered by accepted contract | Covered by accepted contract | [AuditEvent 字段、原子提交与保留](#审计与平台设置)、[审计 API](../api.md#审计)。 |
+| FR-8 停用后撤销访问 | Covered by accepted contract | Covered by accepted contract | [用户生命周期](#状态转换)、[停用 API](../api.md#用户与个人资料)；立即拒绝请求且不恢复旧会话。 |
+| NFR-1 服务端认证与授权 | Covered by accepted contract | Covered by accepted contract | [授权边界](#权限边界)及 API 通用 Bearer Session、401/403 约定。 |
+| NFR-2 停用后会话终止 | Covered by accepted contract | Covered by accepted contract | [UserSession 期限与撤销](#核心模型)、[API 安全约定](../api.md#安全与跨域约定)。 |
+| NFR-3 审计隐私 | Covered by accepted contract | Covered by accepted contract | [秘密排除与同事务提交](#审计与平台设置)、[API 安全约定](../api.md#安全与跨域约定)。 |
+| NFR-4 可部署和初始化 | No shared domain impact | No API impact | 本地 Docker Compose、初始化、健康检查和备份说明由 [运行规格](../sdd/001-runtime-bootstrap/spec.md) 验收；不改变共享领域模型或业务 API。 |
+| NFR-5 独立后端 API 与 CORS | No shared domain impact | Covered by accepted contract | [API 通用约定](../api.md#通用约定)与[部署配置](../api.md#部署配置)明确 JSON REST 和精确来源白名单；具体 origin 是部署参数。 |
 
-**评估结论：Exploratory。** PRD 1.1 尚待审批，因此所有领域/API 结论仍是提案，不能作为 `sdd-spec` 的 Ready 证据。PRD 1.1 获批后，应复核每项覆盖并转为 Ready 或列出具体阻塞。
+**评估结论：Ready。** PRD 1.1 B1 已批准；所有需求均有接受的领域/API 契约覆盖，或有明确的 no-impact 结论。生产服务等级和具体 CORS origin 是后续部署参数，不阻塞 B1 规格与实现。此结果不代表七份 feature spec 已获批准。
 
-### 已采用的建议默认值（PRD 1.1 待审批）
+### 已采用的默认值（PRD 1.1 已批准）
 
 1. 单个企业组织；邮箱+密码，激活前验证邮箱；SMTP 参数与前端基础 URL 通过平台设置管理，本地开发使用 Mailpit。
 2. 前后端分离，仅实现后端；使用不透明 Bearer token + 服务端 UserSession，不使用 JWT；15 分钟空闲超时、8 小时绝对期限。
@@ -255,4 +258,4 @@ HTTP 控制器只负责请求绑定和响应映射；业务规则放在用例边
 6. 审计首批覆盖认证、邀请/激活/重置、账号状态、RBAC 和平台设置变更；保留 365 天。关键变更和审计失败时一并失败。
 7. Spring Boot 4.1.1、Java 25、Maven、Spring MVC、PostgreSQL 18、模块化单体为技术建议；用 Docker Compose 支持本地可重复运行，生产部署目标、SMTP 密码加密密钥和 CORS origin 由部署环境提供。
 
-产品范围与默认值进入 PRD 1.1 Draft；经用户批准后，将本文和 [API 契约](../api.md) 转为接受契约并更新覆盖状态，再进入 `sdd-spec`。
+PRD 1.1 B1 范围与默认值已获用户批准；本文和 [API 契约](../api.md) 作为接受契约供 `sdd-spec` 使用。feature spec 仍须逐项获批后才能进入 `sdd-plan`。
