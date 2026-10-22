@@ -4,7 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.roseiam.audit.Audited;
 import io.roseiam.config.ApiException;
 import io.roseiam.shared.UserPrincipal;
-import io.roseiam.user.UserDirectoryService;
+import io.roseiam.user.UserEntity;
+import io.roseiam.user.UserMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -22,7 +23,7 @@ public class RoleService {
     private final PermissionMapper permissions;
     private final RolePermissionMapper rolePermissions;
     private final UserRoleMapper userRoles;
-    private final UserDirectoryService users;
+    private final UserMapper users;
     private final Clock clock;
 
     public RoleService(
@@ -30,7 +31,7 @@ public class RoleService {
             PermissionMapper permissions,
             RolePermissionMapper rolePermissions,
             UserRoleMapper userRoles,
-            UserDirectoryService users,
+            UserMapper users,
             Clock clock) {
         this.roles = roles;
         this.permissions = permissions;
@@ -158,7 +159,8 @@ public class RoleService {
             actionWhenTrue = "user.role.assigned",
             actionWhenFalse = "user.role.revoked")
     public void assign(long user, long role, UserPrincipal actor, boolean add) {
-        if (!users.exists(user)) throw ApiException.notFound("User not found");
+        if (users.selectCount(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getId, user)) == 0)
+            throw ApiException.notFound("User not found");
         RoleEntity roleEntity = roles.selectById(role);
         if (roleEntity == null) throw ApiException.notFound("Role not found");
         LambdaQueryWrapper<UserRoleEntity> relation = new LambdaQueryWrapper<UserRoleEntity>()
@@ -319,23 +321,12 @@ public class RoleService {
         RoleEntity locked = roles.selectOne(new LambdaQueryWrapper<RoleEntity>()
                 .eq(RoleEntity::getId, admin.getId())
                 .last("FOR UPDATE"));
-        List<Long> admins = userRoles
-                .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getRoleId, locked.getId()))
-                .stream()
-                .map(link -> link.userId)
-                .toList();
-        long active = users.countActive(admins);
+        long active = userRoles.countActiveUsersByRoleId(locked.getId());
         if (active <= 1) throw ApiException.conflict("The last active PlatformAdmin cannot be removed");
     }
 
     private long activeAdminCount(long roleId) {
-        List<Long> adminUserIds =
-                userRoles
-                        .selectList(new LambdaQueryWrapper<UserRoleEntity>().eq(UserRoleEntity::getRoleId, roleId))
-                        .stream()
-                        .map(link -> link.userId)
-                        .toList();
-        return users.countActive(adminUserIds);
+        return userRoles.countActiveUsersByRoleId(roleId);
     }
 
     private static Set<Long> ids(Object value) {

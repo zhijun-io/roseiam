@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import io.roseiam.role.RolePermissionService;
 import io.roseiam.shared.UserPrincipal;
-import io.roseiam.user.UserDirectoryService;
+import io.roseiam.user.UserService;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.dao.DataAccessException;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class OpaqueSessionIntrospector implements OpaqueTokenIntrospector {
     private final UserSessionMapper sessions;
-    private final UserDirectoryService users;
+    private final UserService users;
     private final TokenService tokens;
     private final RolePermissionService authorization;
     private final Clock clock;
@@ -25,7 +25,7 @@ public class OpaqueSessionIntrospector implements OpaqueTokenIntrospector {
 
     public OpaqueSessionIntrospector(
             UserSessionMapper sessions,
-            UserDirectoryService users,
+            UserService users,
             TokenService tokens,
             RolePermissionService authorization,
             Clock clock,
@@ -58,7 +58,7 @@ public class OpaqueSessionIntrospector implements OpaqueTokenIntrospector {
                 || !now.isBefore(session.absoluteExpiresAt)) {
             throw invalidToken();
         }
-        UserDirectoryService.UserAccount user = users.findById(session.userId);
+        UserService.UserAccount user = users.findById(session.userId);
         if (user == null || user.emailVerifiedAt() == null || !"ACTIVE".equals(user.status())) {
             sessions.update(
                     null,

@@ -7,7 +7,7 @@ import io.roseiam.config.ApiException;
 import io.roseiam.config.AppProperties;
 import io.roseiam.config.RequestContext;
 import io.roseiam.platformsetting.PasswordResetRequest;
-import io.roseiam.user.UserDirectoryService;
+import io.roseiam.user.UserService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class IdentityService {
     private final UserSessionMapper sessions;
-    private final UserDirectoryService users;
+    private final UserService users;
     private final PasswordResetMapper resets;
     private final PasswordEncoder passwords;
     private final TokenService tokens;
@@ -32,7 +32,7 @@ public class IdentityService {
 
     public IdentityService(
             UserSessionMapper sessions,
-            UserDirectoryService users,
+            UserService users,
             PasswordResetMapper resets,
             PasswordEncoder passwords,
             TokenService tokens,
@@ -57,7 +57,7 @@ public class IdentityService {
         return createSession(user);
     }
 
-    private AuthDtos.LoginResponse createSession(UserDirectoryService.UserAccount user) {
+    private AuthDtos.LoginResponse createSession(UserService.UserAccount user) {
         if (user == null || user.emailVerifiedAt() == null || !"ACTIVE".equals(user.status())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "invalid_credentials", "Email or password is invalid");
         }
@@ -100,7 +100,7 @@ public class IdentityService {
     @Audited(action = "password.reset.requested", targetType = "User")
     public void requestPasswordReset(String rawEmail) {
         String email = rawEmail.trim().toLowerCase(Locale.ROOT);
-        UserDirectoryService.UserAccount user = users.findVerifiedByEmail(email);
+        UserService.UserAccount user = users.findVerifiedByEmail(email);
         if (user != null) {
             Instant now = clock.instant();
             resets.update(

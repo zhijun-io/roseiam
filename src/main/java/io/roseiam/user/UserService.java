@@ -14,6 +14,7 @@ import io.roseiam.shared.UserPrincipal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +53,59 @@ public class UserService {
         this.events = events;
         this.clock = clock;
     }
+
+    public UserAccount findByEmail(String email) {
+        return toAccount(users.selectOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, email)));
+    }
+
+    public UserAccount findVerifiedByEmail(String email) {
+        return toAccount(users.selectOne(new LambdaQueryWrapper<UserEntity>()
+                .eq(UserEntity::getEmail, email)
+                .isNotNull(UserEntity::getEmailVerifiedAt)));
+    }
+
+    public UserAccount findById(long id) {
+        UserEntity user = users.selectOne(new LambdaQueryWrapper<UserEntity>()
+                .select(
+                        UserEntity::getId,
+                        UserEntity::getEmail,
+                        UserEntity::getEmailVerifiedAt,
+                        UserEntity::getStatus)
+                .eq(UserEntity::getId, id));
+        return toAccount(user);
+    }
+
+    public boolean exists(long id) {
+        return users.selectCount(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getId, id)) > 0;
+    }
+
+    public long countActive(Collection<Long> ids) {
+        if (ids.isEmpty()) return 0;
+        return users.selectCount(
+                new LambdaQueryWrapper<UserEntity>().in(UserEntity::getId, ids).eq(UserEntity::getStatus, "ACTIVE"));
+    }
+
+    public void updatePassword(long id, String passwordHash, Instant updatedAt) {
+        users.update(
+                null,
+                new LambdaUpdateWrapper<UserEntity>()
+                        .eq(UserEntity::getId, id)
+                        .set(UserEntity::getPasswordHash, passwordHash)
+                        .set(UserEntity::getUpdatedAt, updatedAt));
+    }
+
+    private static UserAccount toAccount(UserEntity user) {
+        return user == null
+                ? null
+                : new UserAccount(
+                        user.getId(),
+                        user.getEmail(),
+                        user.getPasswordHash(),
+                        user.getEmailVerifiedAt(),
+                        user.getStatus());
+    }
+
+    public record UserAccount(Long id, String email, String passwordHash, Instant emailVerifiedAt, String status) {}
 
     @PreAuthorize("hasAuthority('users:invite')")
     @Transactional
